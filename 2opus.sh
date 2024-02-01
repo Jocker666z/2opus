@@ -1,0 +1,1043 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2001,SC2086
+# 2opus
+# Various lossless to OPUS while keeping the tags.
+# \(^o^)/ 
+#
+# It does this:
+#    Array namme
+#  1 lst_audio_src              get source list
+#  2 lst_audio_src_pass         source pass
+#  2 lst_audio_src_rejected     source no pass
+#  3 lst_audio_wav_decoded      source -> WAV
+#  4 lst_audio_opus_encoded     WAV -> OPUS
+#  5 source_tag                 TAG -> OPUS
+#
+# Author : Romain Barbarot
+# https://github.com/Jocker666z/2opus/
+# Licence : unlicense
+
+# Search & populate array with source files
+search_source_files() {
+mapfile -t lst_audio_src < <(find "$PWD" -maxdepth 3 -type f -regextype posix-egrep \
+								-iregex '.*\.('$input_ext')$' 2>/dev/null | sort)
+
+# Keep only M4A if arg --M4A_only
+if [[ "${M4A_only}" = "1" ]]; then
+	for i in "${!lst_audio_src[@]}"; do
+		if [[ "${lst_audio_src[i]##*.}" != "m4a" ]]; then
+				unset "lst_audio_src[i]"
+		fi
+	done
+fi
+# Keep only DSD if arg --dsd_only
+if [[ "${dsd_only}" = "1" ]]; then
+	for i in "${!lst_audio_src[@]}"; do
+		if [[ "${lst_audio_src[i]##*.}" != "dsf" ]]; then
+				unset "lst_audio_src[i]"
+		fi
+	done
+fi
+# Keep only FLAC if arg --flac_only
+if [[ "${flac_only}" = "1" ]]; then
+	for i in "${!lst_audio_src[@]}"; do
+		if [[ "${lst_audio_src[i]##*.}" != "flac" ]]; then
+				unset "lst_audio_src[i]"
+		fi
+	done
+fi
+# Keep only WAVPACK if arg --wavpack_only
+if [[ "${wavpack_only}" = "1" ]]; then
+	for i in "${!lst_audio_src[@]}"; do
+		if [[ "${lst_audio_src[i]##*.}" != "wv" ]]; then
+				unset "lst_audio_src[i]"
+		fi
+	done
+fi
+# Keep only WAV if arg --wav_only
+if [[ "${wav_only}" = "1" ]]; then
+	for i in "${!lst_audio_src[@]}"; do
+		if [[ "${lst_audio_src[i]##*.}" != "wav" ]]; then
+				unset "lst_audio_src[i]"
+		fi
+	done
+fi
+# Keep only Monkey's Audio if arg --ape_only
+if [[ "${ape_only}" = "1" ]]; then
+	for i in "${!lst_audio_src[@]}"; do
+		if [[ "${lst_audio_src[i]##*.}" != "ape" ]]; then
+				unset "lst_audio_src[i]"
+		fi
+	done
+fi
+}
+# Verify source integrity
+test_source() {
+local test_counter
+
+test_counter="0"
+
+# Test
+for file in "${lst_audio_src[@]}"; do
+
+	# Progress
+	if ! [[ "$verbose" = "1" ]]; then
+		test_counter=$((test_counter+1))
+		if [[ "${#lst_audio_src[@]}" = "1" ]]; then
+			echo -ne "${test_counter}/${#lst_audio_src[@]} source file is being tested"\\r
+		else
+			echo -ne "${test_counter}/${#lst_audio_src[@]} source files are being tested"\\r
+		fi
+	fi
+
+	(
+	# FLAC - Verify integrity
+	if [[ "${file##*.}" = "flac" ]]; then
+		flac $flac_test_arg "$file" 2>"${cache_dir}/${file##*/}.decode_error.log"
+	# WAVPACK - Verify integrity
+	elif [[ "${file##*.}" = "wv" ]]; then
+		wvunpack $wavpack_test_arg "$file" 2>"${cache_dir}/${file##*/}.decode_error.log"
+	# APE, ALAC, DSD, WAV - Verify integrity
+	elif [[ "${file##*.}" = "m4a" ]] || [[ "${file##*.}" = "wav" ]] || \
+		 [[ "${file##*.}" = "ape" ]] || [[ "${file##*.}" = "dsf" ]]; then
+		ffmpeg -v error -i "$file" \
+			-vn -sn -dn -max_muxing_queue_size 9999 \
+			-f null - 2>"${cache_dir}/${file##*/}.decode_error.log"
+
+		# Ignore ffmpeg non-blocking errors
+		if [ -s "${cache_dir}/${file##*/}.decode_error.log" ]; then
+			# [mjpeg @ ...] unable to decode APP fields...
+			if < "${cache_dir}/${file##*/}.decode_error.log" \
+				grep  -E "mjpeg.*APP fields" &>/dev/null; then
+				rm "${cache_dir}/${file##*/}.decode_error.log"
+			fi
+		fi
+
+	fi
+	) &
+	if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
+		wait -n
+	fi
+
+done
+wait
+
+# Test if error generated
+for file in "${lst_audio_src[@]}"; do
+
+	# FLAC - Special fix loop
+	if [[ "${file##*.}" = "flac" ]]; then
+		# Error log test & populate file in arrays
+		if [ -s "${cache_dir}/${file##*/}.decode_error.log" ]; then
+			# Try to fix file
+			flac $flac_fix_arg "$file"
+			# Re-test, if no valid 2 times exclude
+			flac $flac_test_arg "$file" 2>"${cache_dir}/${file##*/}.decode_error.log"
+		fi
+	fi
+
+	# Errors validation
+	if [ -s "${cache_dir}/${file##*/}.decode_error.log" ]; then
+		mv "${cache_dir}/${file##*/}.decode_error.log" "${file}.decode_error.log"
+		lst_audio_src_rejected+=( "$file" )
+	else
+		rm "${cache_dir}/${file##*/}.decode_error.log"  2>/dev/null
+		lst_audio_src_pass+=( "$file" )
+	fi
+done
+
+
+# Progress end
+if ! [[ "$verbose" = "1" ]]; then
+	tput hpa 0; tput el
+	if (( "${#lst_audio_src_rejected[@]}" )); then
+		if [[ "${#lst_audio_src[@]}" = "1" ]]; then
+			echo "${test_counter} source file tested ~ ${#lst_audio_src_rejected[@]} in error (log generated)"
+		else
+			echo "${test_counter} source files tested ~ ${#lst_audio_src_rejected[@]} in error (log generated)"
+		fi
+	else
+		if [[ "${#lst_audio_src[@]}" = "1" ]]; then
+			echo "${test_counter} source file tested"
+		else
+			echo "${test_counter} source files tested"
+		fi
+	fi
+fi
+
+# All source files size record
+total_source_files_size=$(calc_files_size "${lst_audio_src_pass[@]}")
+# Individual source file size record
+for file in "${lst_audio_src_pass[@]}"; do
+	file_source_files_size+=( "$(get_files_size_bytes "${file}")" )
+done
+}
+# Decode source
+decode_source() {
+local decode_counter
+
+decode_counter="0"
+
+# FLAC - Decode
+for file in "${lst_audio_src_pass[@]}"; do
+	if [[ "${file##*.}" = "flac" ]]; then
+		(
+		flac $flac_decode_arg "$file"
+		) &
+		if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
+			wait -n
+		fi
+
+		# Progress
+		if ! [[ "$verbose" = "1" ]]; then
+			decode_counter=$((decode_counter+1))
+			if [[ "${#lst_audio_src_pass[@]}" = "1" ]]; then
+				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source file is being decoded"\\r
+			else
+				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source files are being decoded"\\r
+			fi
+		fi
+	fi
+done
+wait
+
+# APE, M4A - Decode
+for file in "${lst_audio_src_pass[@]}"; do
+	if [[ "${file##*.}" = "m4a" ]] || [[ "${file##*.}" = "ape" ]]; then
+		(
+		ffmpeg $ffmpeg_log_lvl -y -i "$file" "${file%.*}.wav"
+		) &
+		if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
+			wait -n
+		fi
+
+		# Progress
+		if ! [[ "$verbose" = "1" ]]; then
+			decode_counter=$((decode_counter+1))
+			if [[ "${#lst_audio_src_pass[@]}" = "1" ]]; then
+				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source file decoded"\\r
+			else
+				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source files decoded"\\r
+			fi
+		fi
+	fi
+done
+wait
+
+# DSD - Decode
+for file in "${lst_audio_src_pass[@]}"; do
+	if [[ "${file##*.}" = "dsf" ]]; then
+		(
+		ffmpeg $ffmpeg_log_lvl -y -i "$file" \
+			-c:a pcm_s24le -ar 384000 "${file%.*}.wav"
+		) &
+		if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
+			wait -n
+		fi
+
+		# Progress
+		if ! [[ "$verbose" = "1" ]]; then
+			decode_counter=$((decode_counter+1))
+			if [[ "${#lst_audio_src_pass[@]}" = "1" ]]; then
+				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source file decoded"\\r
+			else
+				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source files decoded"\\r
+			fi
+		fi
+	fi
+done
+wait
+
+# WAVPACK - Decode
+for file in "${lst_audio_src_pass[@]}"; do
+	if [[ "${file##*.}" = "wv" ]]; then
+		(
+		wvunpack $wavpack_decode_arg "$file"
+		) &
+		if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
+			wait -n
+		fi
+
+		# Progress
+		if ! [[ "$verbose" = "1" ]]; then
+			decode_counter=$((decode_counter+1))
+			if [[ "${#lst_audio_src_pass[@]}" = "1" ]]; then
+				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source file decoded"\\r
+			else
+				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source files decoded"\\r
+			fi
+		fi
+	fi
+done
+wait
+
+# Progress end
+if [[ "$verbose" != "1" ]];then
+	tput hpa 0; tput el
+	if [[ "${#lst_audio_src_pass[@]}" = "1" ]]; then
+		echo "${decode_counter} source file decoded"
+	else
+		echo "${decode_counter} source files decoded"
+	fi
+fi
+
+# FLAC target array
+for file in "${lst_audio_src_pass[@]}"; do
+	lst_audio_wav_decoded+=( "${file%.*}.wav" )
+done
+}
+# Convert tag to VORBIS
+tags_2_opus() {
+local cover_test
+local cover_ext
+local tag_label
+local grab_tag_counter
+
+grab_tag_counter="0"
+
+for file in "${lst_audio_opus_encoded[@]}"; do
+
+	# Reset
+	unset source_tag
+	unset source_tag_temp
+	unset source_tag_temp1
+	unset source_tag_temp2
+	unset tag_name
+	unset tag_label
+	unset releasetype
+
+	# Target file
+	if [[ -s "${file%.*}.ape" ]]; then
+		file="${file%.*}.ape"
+	elif [[ -s "${file%.*}.dsf" ]]; then
+		file="${file%.*}.dsf"
+	elif [[ -s "${file%.*}.flac" ]]; then
+		file="${file%.*}.flac"
+	elif [[ -s "${file%.*}.m4a" ]]; then
+		file="${file%.*}.m4a"
+	elif [[ -s "${file%.*}.wv" ]]; then
+		file="${file%.*}.wv"
+	fi
+
+	# Source file tags array
+	mapfile -t source_tag < <( mutagen-inspect "$file" )
+	# Try to extract cover, if no cover in directory
+	if [[ ! -e "${file%/*}"/cover.jpg ]] \
+	&& [[ ! -e "${file%/*}"/cover.png ]]; then
+		cover_test=$(ffprobe -v error -select_streams v:0 \
+					-show_entries stream=codec_name -of csv=s=x:p=0 \
+					"$file" 2>/dev/null)
+		if [[ -n "$cover_test" ]]; then
+			if [[ "$cover_test" = "png" ]]; then
+				cover_ext="png"
+			elif [[ "$cover_test" = *"jpeg"* ]]; then
+				cover_ext="jpg"
+			fi
+			ffmpeg $ffmpeg_log_lvl -n -i "$file" \
+				"${file%/*}"/cover."$cover_ext" 2>/dev/null
+		fi
+	fi
+
+	# Remove empty tag label=
+	mapfile -t source_tag < <( printf '%s\n' "${source_tag[@]}" | grep "=" )
+
+	# Substitution
+	for i in "${!source_tag[@]}"; do
+		# MusicBrainz internal name
+		source_tag[i]="${source_tag[i]//albumartistsort=/ALBUMARTISTSORT=}"
+		source_tag[i]="${source_tag[i]//artistsort=/ARTISTSORT=}"
+		source_tag[i]="${source_tag[i]//musicbrainz_albumid=/MUSICBRAINZ_ALBUMID=}"
+		source_tag[i]="${source_tag[i]//musicbrainz_artistid=/MUSICBRAINZ_ARTISTID=}"
+		source_tag[i]="${source_tag[i]//musicbrainz_recordingid=/MUSICBRAINZ_TRACKID=}"
+		source_tag[i]="${source_tag[i]//musicbrainz_releasegroupid=/MUSICBRAINZ_RELEASEGROUPID=}"
+		source_tag[i]="${source_tag[i]//originalyear=/ORIGINALYEAR=}"
+		source_tag[i]="${source_tag[i]//replaygain_album_gain=/REPLAYGAIN_ALBUM_GAIN=}"
+		source_tag[i]="${source_tag[i]//replaygain_album_peak=/REPLAYGAIN_ALBUM_PEAK=}"
+		source_tag[i]="${source_tag[i]//replaygain_track_gain=/REPLAYGAIN_TRACK_GAIN=}"
+		source_tag[i]="${source_tag[i]//replaygain_track_peak=/REPLAYGAIN_TRACK_PEAK=}"
+
+		# APEv2
+		source_tag[i]="${source_tag[i]//Album Artist=/ALBUMARTIST=}"
+		source_tag[i]="${source_tag[i]//Arranger=/ARRANGER=}"
+		source_tag[i]="${source_tag[i]//Barcode=/BARCODE=}"
+		source_tag[i]="${source_tag[i]//CatalogNumber=/CATALOGNUMBER=}"
+		source_tag[i]="${source_tag[i]//Comment=/COMMENT=}"
+		source_tag[i]="${source_tag[i]//Compilation=/COMPILATION=}"
+		source_tag[i]="${source_tag[i]//Composer=/COMPOSER=}"
+		source_tag[i]="${source_tag[i]//Conductor=/CONDUCTOR=}"
+		source_tag[i]="${source_tag[i]//Copyright=/COPYRIGHT=}"
+		source_tag[i]="${source_tag[i]//Year=/DATE=}"
+		source_tag[i]="${source_tag[i]//Director=/DIRECTOR=}"
+		source_tag[i]="${source_tag[i]//Disc=/DISCNUMBER=}"
+		source_tag[i]="${source_tag[i]//DiscSubtitle=/DISCSUBTITLE=}"
+		source_tag[i]="${source_tag[i]//DJMixer=/DJMIXER=}"
+		source_tag[i]="${source_tag[i]//Engineer=/ENGINEER=}"
+		source_tag[i]="${source_tag[i]//Genre=/GENRE=}"
+		source_tag[i]="${source_tag[i]//Grouping=/GROUPING=}"
+		source_tag[i]="${source_tag[i]//Label=/LABEL=}"
+		source_tag[i]="${source_tag[i]//Language=/LANGUAGE=}"
+		source_tag[i]="${source_tag[i]//Lyricist=/LYRICIST=}"
+		source_tag[i]="${source_tag[i]//Lyrics=/LYRICS=}"
+		source_tag[i]="${source_tag[i]//Media=/MEDIA=}"
+		source_tag[i]="${source_tag[i]//Mixer=/MIXER=}"
+		source_tag[i]="${source_tag[i]//Mood=/MOOD=}"
+		source_tag[i]="${source_tag[i]//Performer=/PERFORMER=}"
+		source_tag[i]="${source_tag[i]//MUSICBRAINZ_ALBUMSTATUS=/RELEASESTATUS=}"
+		source_tag[i]="${source_tag[i]//MUSICBRAINZ_ALBUMTYPE=/RELEASETYPE=}"
+		source_tag[i]="${source_tag[i]//MixArtist=/REMIXER=}"
+		source_tag[i]="${source_tag[i]//Script=/SCRIPT=}"
+		source_tag[i]="${source_tag[i]//Subtitle=/SUBTITLE=}"
+		source_tag[i]="${source_tag[i]//Title=/TITLE=}"
+		source_tag[i]="${source_tag[i]//Track=/TRACKNUMBER=}"
+		source_tag[i]="${source_tag[i]//Weblink=/WEBSITE=}"
+		source_tag[i]="${source_tag[i]//WEBSITE=/Weblink=}"
+		source_tag[i]="${source_tag[i]//Writer=/WRITER=}"
+		# ID3v2
+		source_tag[i]="${source_tag[i]//Acoustid Id=/ACOUSTID_ID=}"
+		source_tag[i]="${source_tag[i]//arranger=/ARRANGER=}"
+		source_tag[i]="${source_tag[i]//description=/COMMENT=}"
+		source_tag[i]="${source_tag[i]//MusicBrainz Album Id=/MUSICBRAINZ_ALBUMID=}"
+		source_tag[i]="${source_tag[i]//MusicBrainz Album Artist Id=/MUSICBRAINZ_ALBUMARTISTID=}"
+		source_tag[i]="${source_tag[i]//MusicBrainz Album Status=/MUSICBRAINZ_ALBUMSTATUS=}"
+		source_tag[i]="${source_tag[i]//MusicBrainz Album Type=/MUSICBRAINZ_ALBUMTYPE=}"
+		source_tag[i]="${source_tag[i]//MusicBrainz Artist Id=/MUSICBRAINZ_ARTISTID=}"
+		source_tag[i]="${source_tag[i]//MusicBrainz Artist Id=/MUSICBRAINZ_ARTISTID=}"
+		source_tag[i]="${source_tag[i]//MusicBrainz Album Release Country=/RELEASECOUNTRY=}"
+		source_tag[i]="${source_tag[i]//MusicBrainz Release Group Id=/MUSICBRAINZ_RELEASEGROUPID=}"
+		source_tag[i]="${source_tag[i]//MusicBrainz Release Track Id=/MUSICBRAINZ_RELEASETRACKID=}"
+		source_tag[i]="${source_tag[i]//TBPM=/BPM=}"
+		source_tag[i]="${source_tag[i]//TEXT=/LYRICIST=}"
+		source_tag[i]="${source_tag[i]//TSRC=/ISRC=}"
+		source_tag[i]="${source_tag[i]//UFID=/MUSICBRAINZ_TRACKID=}"
+		# iTune
+		source_tag[i]="${source_tag[i]//MusicBrainz Album Artist Id=/MUSICBRAINZ_ALBUMARTISTID=}"
+		# Waste fix
+		shopt -s nocasematch
+		source_tag[i]="${source_tag[i]//date=/DATE=}"
+		source_tag[i]="${source_tag[i]//originaldate=/ORIGINALDATE=}"
+		shopt -u nocasematch
+	done
+
+
+	# Array tag name & label
+	mapfile -t tag_name < <( printf '%s\n' "${source_tag[@]}" | awk -F "=" '{print $1}' )
+	mapfile -t tag_label < <( printf '%s\n' "${source_tag[@]}" | cut -f2- -d'=' )
+
+	# Whitelist parsing
+	for i in "${!tag_name[@]}"; do
+		for tag in "${Vorbis_whitelist[@]}"; do
+			# Vorbis std
+			if [[ "${tag_name[i],,}" = "${tag,,}" ]] \
+			&& [[ -n "${tag_label[i]// }" ]]; then
+
+				# Picard std
+				if [[ "${tag}" = "TRACKNUMBER" ]] \
+				&& [[ "${tag_label[i]}" = *"/"* ]]; then
+					source_tag+=( "TOTALTRACKS=\"${tag_label[i]#*/}\"" )
+				fi
+				if [[ "${tag}" = "DISCNUMBER" ]] \
+				&& [[ "${tag_label[i]}" = *"/"* ]]; then
+					source_tag+=( "TOTALDISCS=\"${tag_label[i]#*/}\"" )
+				fi
+				if [[ "${tag}" = "TRACKNUMBER" ]] \
+				|| [[ "${tag}" = "DISCNUMBER" ]]; then
+					tag_label[i]="${tag_label[i]%/*}"
+				fi
+
+				if [[ "${tag}" = "RELEASETYPE" ]] \
+				&& [[ "${tag_label[i]}" = *" / "* ]]; then
+					releasetype=( $(echo "${tag_label[i]// \/ /|}" \
+									| tr "|" "\n" ) )
+					for type in "${releasetype[@]}"; do
+						source_tag+=( "RELEASETYPE=\"${type}\"" )
+					done
+				elif [[ "${tag}" = "ISRC" ]] \
+				&& [[ "${tag_label[i]}" = *" / "* ]]; then
+					releasetype=( $(echo "${tag_label[i]// \/ /|}" \
+									| tr "|" "\n" ) )
+					for type in "${releasetype[@]}"; do
+						source_tag+=( "ISRC=\"${type}\"" )
+					done
+				else
+					# Prevent double quote error
+					tag_label[i]="${tag_label[i]//\"/\\\"}"
+					# Array of tag
+					source_tag[i]="${tag}=\"${tag_label[i]}\""
+				fi
+
+				continue 2
+			# reject
+			else
+				unset "source_tag[i]"
+			fi
+		done
+	done
+
+	# Remove duplicate tags
+	mapfile -t source_tag < <( printf '%s\n' "${source_tag[@]}" | sort -u )
+
+	# tag argument
+	target_tags_construct=$(printf '%s\n' "${source_tag[@]}" \
+							| awk 1 ORS=' -s ')
+	target_tags_construct="-s ${target_tags_construct% -s }"
+	lst_audio_opus_target_tags+=( "$target_tags_construct" )
+
+	# Progress
+	if ! [[ "$verbose" = "1" ]]; then
+		grab_tag_counter=$((grab_tag_counter+1))
+		if [[ "${#lst_audio_opus_encoded[@]}" = "1" ]]; then
+			echo -ne "${grab_tag_counter}/${#lst_audio_opus_encoded[@]} tag is being converted to vorbis comment"\\r
+		else
+			echo -ne "${grab_tag_counter}/${#lst_audio_opus_encoded[@]} tags is being converted to vorbis comment"\\r
+		fi
+	fi
+done
+
+# Progress end
+if ! [[ "$verbose" = "1" ]]; then
+	tput hpa 0; tput el
+	if [[ "${#lst_audio_opus_encoded[@]}" = "1" ]]; then
+		echo "${grab_tag_counter} tag is being converted to vorbis comment"
+	else
+		echo "${grab_tag_counter} tags is being converted to vorbis comment"
+	fi
+fi
+}
+# OPUS - Encode
+encode_opus() {
+local compress_counter
+
+compress_counter="0"
+
+for file in "${lst_audio_wav_decoded[@]}"; do
+	# Encode OPUS
+	(
+	if [[ "$verbose" = "1" ]]; then
+		opusenc \
+		--bitrate "$opus_bitrate" --vbr \
+			"$file" "${file%.*}".opus
+	else
+		opusenc \
+		--bitrate "$opus_bitrate" --vbr \
+			"$file" "${file%.*}".opus &>/dev/null
+	fi
+	) &
+	if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
+		wait -n
+	fi
+
+	# Progress
+	if ! [[ "$verbose" = "1" ]]; then
+		compress_counter=$((compress_counter+1))
+		if [[ "${#lst_audio_wav_decoded[@]}" = "1" ]]; then
+			echo -ne "${compress_counter}/${#lst_audio_wav_decoded[@]} opus file is being encoded"\\r
+		else
+			echo -ne "${compress_counter}/${#lst_audio_wav_decoded[@]} opus files are being encoded"\\r
+		fi
+	fi
+done
+wait
+
+# Progress end
+if ! [[ "$verbose" = "1" ]]; then
+	tput hpa 0; tput el
+	if [[ "${#lst_audio_wav_decoded[@]}" = "1" ]]; then
+		echo "${compress_counter} opus file encoded"
+	else
+		echo "${compress_counter} opus files encoded"
+	fi
+fi
+
+# Clean + target array
+for i in "${!lst_audio_wav_decoded[@]}"; do
+	# Array of ape target
+	lst_audio_opus_encoded+=( "${lst_audio_wav_decoded[i]%.*}.opus" )
+
+	# Remove temp wav files
+	if [[ "${lst_audio_src[i]##*.}" != "wav" ]]; then
+		rm -f "${lst_audio_src[i]%.*}.wav" 2>/dev/null
+	fi
+done
+}
+# OPUS - Tag
+tag_opus() {
+local tag_counter
+
+tag_counter="0"
+
+for i in "${!lst_audio_opus_encoded[@]}"; do
+	(
+	if [[ "$verbose" = "1" ]]; then
+		eval opustags -D \
+				-i "\"${lst_audio_opus_encoded[i]%.*}.opus\"" \
+				"${lst_audio_opus_target_tags[i]}"
+	else
+		eval opustags -D \
+				-i "\"${lst_audio_opus_encoded[i]%.*}.opus\"" \
+				"${lst_audio_opus_target_tags[i]}" &>/dev/null
+	fi
+	) &
+	if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
+		wait -n
+	fi
+
+	# Progress
+	if ! [[ "$verbose" = "1" ]]; then
+		tag_counter=$((tag_counter+1))
+		if [[ "${#lst_audio_wav_decoded[@]}" = "1" ]]; then
+			echo -ne "${tag_counter}/${#lst_audio_opus_encoded[@]} opus file is being tagged"\\r
+		else
+			echo -ne "${tag_counter}/${#lst_audio_opus_encoded[@]} opus files are being tagged"\\r
+		fi
+	fi
+done
+wait
+
+# Progress end
+if ! [[ "$verbose" = "1" ]]; then
+	tput hpa 0; tput el
+	if [[ "${#lst_audio_wav_decoded[@]}" = "1" ]]; then
+		echo "${tag_counter} opus file tagged"
+	else
+		echo "${tag_counter} opus files tagged"
+	fi
+fi
+}
+# Total size calculation in MB - Input must be in bytes
+calc_files_size() {
+local files
+local size
+local size_in_mb
+
+files=("$@")
+
+if (( "${#files[@]}" )); then
+	# Get size in bytes
+	if ! [[ "${files[-1]}" =~ ^[0-9]+$ ]]; then
+		size=$(wc -c "${files[@]}" | tail -1 | awk '{print $1;}')
+	else
+		size="${files[-1]}"
+	fi
+	# Mb convert
+	size_in_mb=$(bc <<< "scale=1; $size / 1024 / 1024" | sed 's!\.0*$!!')
+else
+	size_in_mb="0"
+fi
+
+# If string start by "." add lead 0
+if [[ "${size_in_mb:0:1}" == "." ]]; then
+	size_in_mb="0$size_in_mb"
+fi
+
+# If GB not display float
+size_in_mb_integer="${size_in_mb%%.*}"
+if [[ "${#size_in_mb_integer}" -ge "4" ]]; then
+	size_in_mb="$size_in_mb_integer"
+fi
+
+echo "$size_in_mb"
+}
+# Get file size in bytes
+get_files_size_bytes() {
+local files
+local size
+files=("$@")
+
+if (( "${#files[@]}" )); then
+	# Get size in bytes
+	size=$(wc -c "${files[@]}" | tail -1 | awk '{print $1;}')
+fi
+
+echo "$size"
+}
+# Percentage calculation
+calc_percent() {
+local total
+local value
+local perc
+
+value="$1"
+total="$2"
+
+if [[ "$value" = "$total" ]]; then
+	echo "00.00"
+else
+	# Percentage calculation
+	perc=$(bc <<< "scale=4; ($total - $value)/$value * 100")
+	# If string start by "." or "-." add lead 0
+	if [[ "${perc:0:1}" == "." ]] || [[ "${perc:0:2}" == "-." ]]; then
+		if [[ "${perc:0:2}" == "-." ]]; then
+			perc="${perc/-./-0.}"
+		else
+			perc="${perc/./+0.}"
+		fi
+	fi
+	# If string start by integer add lead +
+	if [[ "${perc:0:1}" =~ ^[0-9]+$ ]]; then
+			perc="+${perc}"
+	fi
+	# Keep only 5 first digit
+	perc="${perc:0:5}"
+
+	echo "$perc"
+fi
+}
+# Display trick - print term tuncate
+display_list_truncate() {
+local list
+local term_widh_truncate
+
+list=("$@")
+
+term_widh_truncate=$(stty size | awk '{print $2}' | awk '{ print $1 - 8 }')
+
+for line in "${list[@]}"; do
+	if [[ "${#line}" -gt "$term_widh_truncate" ]]; then
+		echo -e "  $line" | cut -c 1-"$term_widh_truncate" | awk '{print $0"..."}'
+	else
+		echo -e "  $line"
+	fi
+done
+}
+# Summary of processing
+summary_of_processing() {
+local time_formated
+local file_target_files_size
+local file_diff_percentage
+local file_path_truncate
+local total_target_files_size
+local total_diff_size
+local total_diff_percentage
+
+if (( "${#lst_audio_src[@]}" )); then
+	time_formated="$((SECONDS/3600))h$((SECONDS%3600/60))m$((SECONDS%60))s"
+
+	# All files pass size stats & label
+	if (( "${#lst_audio_src_pass[@]}" )); then
+		for i in "${!lst_audio_src_pass[@]}"; do
+			# Make statistics of indidual processed files
+			file_target_files_size=$(get_files_size_bytes "${lst_audio_opus_encoded[i]}")
+			file_diff_percentage=$(calc_percent "${file_source_files_size[i]}" "$file_target_files_size")
+			filesPassSizeReduction+=( "$file_diff_percentage" )
+			file_path_truncate=$(echo "${lst_audio_opus_encoded[i]}" | rev | cut -d'/' -f-3 | rev)
+			filesPassLabel+=( "(${filesPassSizeReduction[i]}%) ~ .${file_path_truncate}" )
+		done
+	fi
+	# All files rejected size label
+	if (( "${#lst_audio_src_rejected[@]}" )); then
+		for i in "${!lst_audio_src_rejected[@]}"; do
+			file_path_truncate=$(echo "${lst_audio_src_rejected[i]}" | rev | cut -d'/' -f-3 | rev)
+			filesRejectedLabel+=( ".${file_path_truncate}" )
+		done
+	fi
+	# Total files size stats
+	total_target_files_size=$(calc_files_size "${lst_audio_opus_encoded[@]}")
+	total_diff_size=$(bc <<< "scale=0; ($total_target_files_size - $total_source_files_size)" \
+						| sed -r 's/^(-?)\./\10./')
+	total_diff_percentage=$(calc_percent "$total_source_files_size" "$total_target_files_size")
+
+	# Print list of files stats
+	if (( "${#lst_audio_src_pass[@]}" )); then
+		echo
+		echo "File(s) created:"
+		display_list_truncate "${filesPassLabel[@]}"
+	fi
+	# Print list of files reject
+	if (( "${#lst_audio_src_rejected[@]}" )); then
+		echo
+		echo "File(s) in error:"
+		display_list_truncate "${filesRejectedLabel[@]}"
+	fi
+	# Print all files stats
+	echo
+	echo "${#lst_audio_opus_encoded[@]}/${#lst_audio_src[@]} file(s) encoded to OPUS for a total of ${total_target_files_size}Mb."
+	echo "${total_diff_percentage}% difference with the source files, ${total_diff_size}Mb on ${total_source_files_size}Mb."
+	echo "Processing en: $(date +%D\ at\ %Hh%Mm) - Duration: ${time_formated}."
+	echo
+fi
+}
+# Remove source files
+remove_source_files() {
+if [ "${#lst_audio_opus_encoded[@]}" -gt 0 ] ; then
+	read -r -p "Remove source files? [y/N]:" qarm
+	case $qarm in
+		"Y"|"y")
+			# Remove source files
+			for file in "${lst_audio_src_pass[@]}"; do
+				rm -f "$file" 2>/dev/null
+			done
+		;;
+		*)
+			source_not_removed="1"
+		;;
+	esac
+fi
+}
+# Remove target files
+remove_target_files() {
+if [ "$source_not_removed" = "1" ] ; then
+	read -r -p "Remove target files? [y/N]:" qarm
+	case $qarm in
+		"Y"|"y")
+			# Remove source files
+			for file in "${lst_audio_opus_encoded[@]}"; do
+				rm -f "$file" 2>/dev/null
+			done
+		;;
+	esac
+fi
+}
+# Test dependencies
+command_label() {
+if [[ "$command" = "ffprobe" ]]; then
+	command="$command (ffmpeg package)"
+fi
+if [[ "$command" = "mutagen-inspect" ]]; then
+	command="$command (python3-mutagen package)"
+fi
+}
+command_display() {
+local label
+label="$1"
+if (( "${#command_fail[@]}" )); then
+	echo
+	echo "Please install the $label dependencies:"
+	display_list_truncate "${command_fail[@]}"
+	echo
+	exit
+fi
+}
+command_test() {
+n=0;
+for command in "${core_dependencies[@]}"; do
+	if hash "$command" &>/dev/null; then
+		(( c++ )) || true
+	else
+		command_label
+		command_fail+=("[!] $command")
+		(( n++ )) || true
+	fi
+done
+command_display "2opus"
+}
+# Usage print
+usage() {
+cat <<- EOF
+2opus - GNU GPL-2.0 Copyright - <https://github.com/Jocker666z/2opus>
+Various lossless to OPUS while keeping the tags.
+
+Processes all compatible files in the current directory
+and his three subdirectories.
+
+Usage:
+2opus [options]
+
+Options:
+  --ape_only              Encode only Monkey's Audio source.
+  --dsd_only              Encode only DSD source.
+  --flac_only             Encode only FLAC source.
+  --m4a_only              Encode only M4A source.
+  --wav_only              Encode only WAV source.
+  --wavpack_only          Encode only WAVPACK source.
+  -v, --verbose           More verbose, for debug.
+
+Supported source files:
+  * DSD as .dsf
+  * FLAC as .flac
+  * M4A as .m4a
+  * Monkey's Audio as .ape
+  * WAVPACK as .wv
+  * WAV as .wav
+EOF
+}
+
+# Need Dependencies
+core_dependencies=(ffmpeg ffprobe flac mutagen-inspect opusenc opustags wavpack)
+# Paths
+export PATH=$PATH:/home/$USER/.local/bin
+cache_dir="/tmp/2opus"
+# Nb process parrallel (nb of processor)
+nproc=$(grep -cE 'processor' /proc/cpuinfo)
+# Input extention available
+input_ext="ape|dsf|flac|m4a|wv|wav"
+# FFMPEG
+ffmpeg_log_lvl="-hide_banner -loglevel panic -nostats"
+# FLAC
+flac_test_arg="--no-md5-sum --no-warnings-as-errors -s -t"
+flac_fix_arg="--totally-silent -f --verify --decode-through-errors"
+flac_decode_arg="--totally-silent -f -d"
+# OPUS
+opus_bitrate="192"
+opus_version=$(opusenc -V | head -1 | awk -F"[()]" '{print $2}' | cut -d' ' -f2-)
+# WAVPACK
+wavpack_test_arg="-q -v"
+wavpack_decode_arg="-q -w -y"
+# Tag whitelist according with:
+# https://picard-docs.musicbrainz.org/en/appendices/tag_mapping.html
+# Ommit: ENCODEDBY, ENCODERSETTINGS
+Vorbis_whitelist=(
+	'ACOUSTID_ID'
+	'ACOUSTID_FINGERPRINT'
+	'ALBUM'
+	'ALBUMARTIST'
+	'ALBUMARTISTSORT'
+	'ALBUMSORT'
+	'ARRANGER'
+	'ARTIST'
+	'ARTISTSORT'
+	'ARTISTS'
+	'ASIN'
+	'BARCODE'
+	'BPM'
+	'CATALOGNUMBER'
+	'COMMENT'
+	'COMPILATION'
+	'COMPOSER'
+	'COMPOSERSORT'
+	'CONDUCTOR'
+	'COPYRIGHT'
+	'DIRECTOR'
+	'DISCNUMBER'
+	'DISCSUBTITLE'
+	'ENGINEER'
+	'GENRE'
+	'GROUPING'
+	'KEY'
+	'ISRC'
+	'LANGUAGE'
+	'LICENSE'
+	'LYRICIST'
+	'LYRICS'
+	'MEDIA'
+	'DJMIXER'
+	'MIXER'
+	'MOOD'
+	'MOVEMENTNAME'
+	'MOVEMENTTOTAL'
+	'MOVEMENT'
+	'MUSICBRAINZ_ARTISTID'
+	'MUSICBRAINZ_DISCID'
+	'MUSICBRAINZ_ORIGINALARTISTID'
+	'MUSICBRAINZ_ORIGINALALBUMID'
+	'MUSICBRAINZ_TRACKID'
+	'MUSICBRAINZ_ALBUMARTISTID'
+	'MUSICBRAINZ_RELEASEGROUPID'
+	'MUSICBRAINZ_ALBUMID'
+	'MUSICBRAINZ_RELEASETRACKID'
+	'MUSICBRAINZ_TRMID'
+	'MUSICBRAINZ_WORKID'
+	'MUSICIP_PUID'
+	'ORIGINALFILENAME'
+	'ORIGINALDATE'
+	'ORIGINALYEAR'
+	'PERFORMER'
+	'PRODUCER'
+	'RATING'
+	'LABEL'
+	'RELEASECOUNTRY'
+	'DATE'
+	'RELEASESTATUS'
+	'RELEASETYPE'
+	'REMIXER'
+	'REPLAYGAIN_ALBUM_GAIN'
+	'REPLAYGAIN_ALBUM_PEAK'
+	'REPLAYGAIN_ALBUM_RANGE'
+	'REPLAYGAIN_REFERENCE_LOUDNESS'
+	'REPLAYGAIN_TRACK_GAIN'
+	'REPLAYGAIN_TRACK_PEAK'
+	'REPLAYGAIN_TRACK_RANGE'
+	'SCRIPT'
+	'SHOWMOVEMENT'
+	'SUBTITLE'
+	'TOTALDISCS'
+	'DISCTOTAL'
+	'TRACKTOTAL'
+	'TOTALTRACKS'
+	'TRACKNUMBER'
+	'TITLE'
+	'TITLESORT'
+	'WEBSITE'
+	'WORK'
+	'WRITER'
+)
+
+# Command arguments
+while [[ $# -gt 0 ]]; do
+	key="$1"
+	case "$key" in
+	-h|--help)
+		usage
+		exit
+	;;
+	"--M4A_only")
+		M4A_only="1"
+	;;
+	"--ape_only")
+		ape_only="1"
+	;;
+	"--dsd_only")
+		dsd_only="1"
+	;;
+	"--flac_only")
+		flac_only="1"
+	;;
+	"--wav_only")
+		wav_only="1"
+	;;
+	"--wavpack_only")
+		wavpack_only="1"
+	;;
+	-v|--verbose)
+		verbose="1"
+	;;
+	*)
+		usage
+		exit
+	;;
+esac
+shift
+done
+
+# Check cache directory
+if [ ! -d "$cache_dir" ]; then
+	mkdir "$cache_dir"
+fi
+
+# Consider if file exist in cache directory after 1 days, delete it
+find "$cache_dir/" -type f -mtime +1 -exec /bin/rm -f {} \;
+
+# Test dependencies
+command_test
+
+# Find source files
+search_source_files
+
+# Start main
+if (( "${#lst_audio_src[@]}" )); then
+	echo
+	echo "2opus start processing with $opus_version \(^o^)/"
+	echo "Working directory: $(echo ${PWD} | rev | cut -d'/' -f-1 | rev)"
+	echo
+	echo "${#lst_audio_src[@]} source files found"
+
+	# Test
+	test_source
+
+	# Decode
+	decode_source
+
+	# Encode
+	encode_opus
+
+	# Tag
+	tags_2_opus
+	tag_opus
+
+	# End
+	summary_of_processing
+	if (( "${#lst_audio_opus_encoded[@]}" )); then
+		remove_source_files
+		remove_target_files
+	fi
+fi
+exit
