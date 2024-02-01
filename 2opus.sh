@@ -178,7 +178,6 @@ local decode_counter
 
 decode_counter="0"
 
-# APE, M4A - Decode
 for file in "${lst_audio_src_pass[@]}"; do
 	(
 
@@ -188,9 +187,6 @@ for file in "${lst_audio_src_pass[@]}"; do
 	elif [[ "${file##*.}" = "dsf" ]]; then
 		ffmpeg $ffmpeg_log_lvl -y -i "$file" \
 			-c:a pcm_s24le -ar 384000 "${cache_dir}/${file##*/}.wav"
-
-	elif [[ "${file##*.}" = "flac" ]]; then
-		flac $flac_decode_arg "$file" -o "${cache_dir}/${file##*/}.wav"
 
 	elif [[ "${file##*.}" = "wv" ]]; then
 		wvunpack $wavpack_decode_arg "$file" -o "${cache_dir}/${file##*/}.wav"
@@ -213,7 +209,12 @@ for file in "${lst_audio_src_pass[@]}"; do
 	fi
 
 	# OPUS target array
-	lst_audio_wav_decoded+=( "${cache_dir}/${file##*/}.wav" )
+	if [[ "${file##*.}" = "flac" ]] \
+	|| [[ "${file##*.}" = "wav" ]]; then
+		lst_audio_wav_decoded+=( "$file" )
+	else
+		lst_audio_wav_decoded+=( "${cache_dir}/${file##*/}.wav" )
+	fi
 
 done
 wait
@@ -452,16 +453,16 @@ local compress_counter
 compress_counter="0"
 
 # Encode OPUS
-for file in "${lst_audio_src_pass[@]}"; do
+for i in "${!lst_audio_src_pass[@]}"; do
 	(
 	if [[ "$verbose" = "1" ]]; then
 		opusenc \
 		--bitrate "$opus_bitrate" --vbr \
-			"${cache_dir}/${file##*/}.wav" "${file%.*}".opus &>/dev/null
+			"${lst_audio_wav_decoded[i]}" "${lst_audio_src_pass[i]%.*}".opus &>/dev/null
 	else
 		opusenc \
 		--bitrate "$opus_bitrate" --vbr \
-			"${cache_dir}/${file##*/}.wav" "${file%.*}".opus &>/dev/null
+			"${lst_audio_wav_decoded[i]}" "${lst_audio_src_pass[i]%.*}".opus &>/dev/null
 	fi
 	) &
 	if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
