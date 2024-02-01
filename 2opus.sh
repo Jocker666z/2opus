@@ -178,96 +178,43 @@ local decode_counter
 
 decode_counter="0"
 
-# FLAC - Decode
-for file in "${lst_audio_src_pass[@]}"; do
-	if [[ "${file##*.}" = "flac" ]]; then
-		(
-		flac $flac_decode_arg "$file"
-		) &
-		if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
-			wait -n
-		fi
-
-		# Progress
-		if ! [[ "$verbose" = "1" ]]; then
-			decode_counter=$((decode_counter+1))
-			if [[ "${#lst_audio_src_pass[@]}" = "1" ]]; then
-				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source file is being decoded"\\r
-			else
-				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source files are being decoded"\\r
-			fi
-		fi
-	fi
-done
-wait
-
 # APE, M4A - Decode
 for file in "${lst_audio_src_pass[@]}"; do
-	if [[ "${file##*.}" = "m4a" ]] || [[ "${file##*.}" = "ape" ]]; then
-		(
-		ffmpeg $ffmpeg_log_lvl -y -i "$file" "${file%.*}.wav"
-		) &
-		if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
-			wait -n
-		fi
+	(
 
-		# Progress
-		if ! [[ "$verbose" = "1" ]]; then
-			decode_counter=$((decode_counter+1))
-			if [[ "${#lst_audio_src_pass[@]}" = "1" ]]; then
-				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source file decoded"\\r
-			else
-				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source files decoded"\\r
-			fi
-		fi
-	fi
-done
-wait
+	if [[ "${file##*.}" = "ape" ]] || [[ "${file##*.}" = "m4a" ]]; then
+		ffmpeg $ffmpeg_log_lvl -y -i "$file" "${cache_dir}/${file##*/}.wav"
 
-# DSD - Decode
-for file in "${lst_audio_src_pass[@]}"; do
-	if [[ "${file##*.}" = "dsf" ]]; then
-		(
+	elif [[ "${file##*.}" = "dsf" ]]; then
 		ffmpeg $ffmpeg_log_lvl -y -i "$file" \
-			-c:a pcm_s24le -ar 384000 "${file%.*}.wav"
-		) &
-		if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
-			wait -n
-		fi
+			-c:a pcm_s24le -ar 384000 "${cache_dir}/${file##*/}.wav"
 
-		# Progress
-		if ! [[ "$verbose" = "1" ]]; then
-			decode_counter=$((decode_counter+1))
-			if [[ "${#lst_audio_src_pass[@]}" = "1" ]]; then
-				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source file decoded"\\r
-			else
-				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source files decoded"\\r
-			fi
+	elif [[ "${file##*.}" = "flac" ]]; then
+		flac $flac_decode_arg "$file" -o "${cache_dir}/${file##*/}.wav"
+
+	elif [[ "${file##*.}" = "wv" ]]; then
+		wvunpack $wavpack_decode_arg "$file" -o "${cache_dir}/${file##*/}.wav"
+
+	fi
+
+	) &
+	if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
+		wait -n
+	fi
+
+	# Progress
+	if ! [[ "$verbose" = "1" ]]; then
+		decode_counter=$((decode_counter+1))
+		if [[ "${#lst_audio_src_pass[@]}" = "1" ]]; then
+			echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source file decoded"\\r
+		else
+			echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source files decoded"\\r
 		fi
 	fi
-done
-wait
 
-# WAVPACK - Decode
-for file in "${lst_audio_src_pass[@]}"; do
-	if [[ "${file##*.}" = "wv" ]]; then
-		(
-		wvunpack $wavpack_decode_arg "$file"
-		) &
-		if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
-			wait -n
-		fi
+	# OPUS target array
+	lst_audio_wav_decoded+=( "${cache_dir}/${file##*/}.wav" )
 
-		# Progress
-		if ! [[ "$verbose" = "1" ]]; then
-			decode_counter=$((decode_counter+1))
-			if [[ "${#lst_audio_src_pass[@]}" = "1" ]]; then
-				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source file decoded"\\r
-			else
-				echo -ne "${decode_counter}/${#lst_audio_src_pass[@]} source files decoded"\\r
-			fi
-		fi
-	fi
 done
 wait
 
@@ -280,11 +227,6 @@ if [[ "$verbose" != "1" ]];then
 		echo "${decode_counter} source files decoded"
 	fi
 fi
-
-# FLAC target array
-for file in "${lst_audio_src_pass[@]}"; do
-	lst_audio_wav_decoded+=( "${file%.*}.wav" )
-done
 }
 # Convert tag to VORBIS
 tags_2_opus() {
@@ -509,17 +451,17 @@ local compress_counter
 
 compress_counter="0"
 
-for file in "${lst_audio_wav_decoded[@]}"; do
-	# Encode OPUS
+# Encode OPUS
+for file in "${lst_audio_src_pass[@]}"; do
 	(
 	if [[ "$verbose" = "1" ]]; then
 		opusenc \
 		--bitrate "$opus_bitrate" --vbr \
-			"$file" "${file%.*}".opus
+			"${cache_dir}/${file##*/}.wav" "${file%.*}".opus &>/dev/null
 	else
 		opusenc \
 		--bitrate "$opus_bitrate" --vbr \
-			"$file" "${file%.*}".opus &>/dev/null
+			"${cache_dir}/${file##*/}.wav" "${file%.*}".opus &>/dev/null
 	fi
 	) &
 	if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
@@ -549,13 +491,13 @@ if ! [[ "$verbose" = "1" ]]; then
 fi
 
 # Clean + target array
-for i in "${!lst_audio_wav_decoded[@]}"; do
+for i in "${!lst_audio_src_pass[@]}"; do
 	# Array of ape target
-	lst_audio_opus_encoded+=( "${lst_audio_wav_decoded[i]%.*}.opus" )
+	lst_audio_opus_encoded+=( "${lst_audio_src_pass[i]%.*}.opus" )
 
 	# Remove temp wav files
 	if [[ "${lst_audio_src[i]##*.}" != "wav" ]]; then
-		rm -f "${lst_audio_src[i]%.*}.wav" 2>/dev/null
+		rm -f "${lst_audio_wav_decoded[i]%.*}.wav" 2>/dev/null
 	fi
 done
 }
