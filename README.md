@@ -1,4 +1,4 @@
-# 2flac
+# 2opus
 
 Various audio to OPUS while keeping the tags.
 
