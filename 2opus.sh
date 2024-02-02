@@ -4,15 +4,6 @@
 # Various lossless to OPUS while keeping the tags.
 # \(^o^)/ 
 #
-# It does this:
-#    Array namme
-#  1 lst_audio_src              get source list
-#  2 lst_audio_src_pass         source pass
-#  2 lst_audio_src_rejected     source no pass
-#  3 lst_audio_wav_decoded      source -> WAV
-#  4 lst_audio_opus_encoded     WAV -> OPUS
-#  5 source_tag                 TAG -> OPUS
-#
 # Author : Romain Barbarot
 # https://github.com/Jocker666z/2opus/
 # Licence : unlicense
@@ -22,54 +13,40 @@ search_source_files() {
 mapfile -t lst_audio_src < <(find "$PWD" -maxdepth 3 -type f -regextype posix-egrep \
 								-iregex '.*\.('$input_ext')$' 2>/dev/null | sort)
 
-# Keep only M4A if arg --M4A_only
-if [[ "${M4A_only}" = "1" ]]; then
-	for i in "${!lst_audio_src[@]}"; do
-		if [[ "${lst_audio_src[i]##*.}" != "m4a" ]]; then
-				unset "lst_audio_src[i]"
-		fi
-	done
-fi
-# Keep only DSD if arg --dsd_only
-if [[ "${dsd_only}" = "1" ]]; then
-	for i in "${!lst_audio_src[@]}"; do
-		if [[ "${lst_audio_src[i]##*.}" != "dsf" ]]; then
-				unset "lst_audio_src[i]"
-		fi
-	done
-fi
-# Keep only FLAC if arg --flac_only
-if [[ "${flac_only}" = "1" ]]; then
-	for i in "${!lst_audio_src[@]}"; do
-		if [[ "${lst_audio_src[i]##*.}" != "flac" ]]; then
-				unset "lst_audio_src[i]"
-		fi
-	done
-fi
-# Keep only WAVPACK if arg --wavpack_only
-if [[ "${wavpack_only}" = "1" ]]; then
-	for i in "${!lst_audio_src[@]}"; do
-		if [[ "${lst_audio_src[i]##*.}" != "wv" ]]; then
-				unset "lst_audio_src[i]"
-		fi
-	done
-fi
-# Keep only WAV if arg --wav_only
-if [[ "${wav_only}" = "1" ]]; then
-	for i in "${!lst_audio_src[@]}"; do
-		if [[ "${lst_audio_src[i]##*.}" != "wav" ]]; then
-				unset "lst_audio_src[i]"
-		fi
-	done
-fi
-# Keep only Monkey's Audio if arg --ape_only
-if [[ "${ape_only}" = "1" ]]; then
-	for i in "${!lst_audio_src[@]}"; do
-		if [[ "${lst_audio_src[i]##*.}" != "ape" ]]; then
-				unset "lst_audio_src[i]"
-		fi
-	done
-fi
+# Only clean
+for i in "${!lst_audio_src[@]}"; do
+
+	if [[ "${ape_only}" = "1" ]] \
+	&& [[ "${lst_audio_src[i]##*.}" != "ape" ]]; then
+			unset "lst_audio_src[i]"
+	fi
+
+	if [[ "${dsd_only}" = "1" ]] \
+	&& [[ "${lst_audio_src[i]##*.}" != "dsf" ]]; then
+			unset "lst_audio_src[i]"
+	fi
+
+	if [[ "${flac_only}" = "1" ]] \
+	&& [[ "${lst_audio_src[i]##*.}" != "flac" ]]; then
+			unset "lst_audio_src[i]"
+	fi
+
+	if [[ "${M4A_only}" = "1" ]] \
+	&& [[ "${lst_audio_src[i]##*.}" != "m4a" ]]; then
+			unset "lst_audio_src[i]"
+	fi
+
+	if [[ "${wav_only}" = "1" ]] \
+	&& [[ "${lst_audio_src[i]##*.}" != "wav" ]]; then
+			unset "lst_audio_src[i]"
+	fi
+
+	if [[ "${wavpack_only}" = "1" ]] \
+	&& [[ "${lst_audio_src[i]##*.}" != "wv" ]]; then
+			unset "lst_audio_src[i]"
+	fi
+
+done
 }
 # Verify source integrity
 test_source() {
@@ -247,7 +224,7 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 	unset source_tag_temp2
 	unset tag_name
 	unset tag_label
-	unset releasetype
+	unset tag_trick
 
 	# Target file
 	if [[ -s "${file%.*}.ape" ]]; then
@@ -389,17 +366,24 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 
 				if [[ "${tag}" = "RELEASETYPE" ]] \
 				&& [[ "${tag_label[i]}" = *" / "* ]]; then
-					releasetype=( $(echo "${tag_label[i]// \/ /|}" \
+					tag_trick=( $(echo "${tag_label[i]// \/ /|}" \
 									| tr "|" "\n" ) )
-					for type in "${releasetype[@]}"; do
+					for type in "${tag_trick[@]}"; do
 						source_tag+=( "RELEASETYPE=\"${type}\"" )
 					done
 				elif [[ "${tag}" = "ISRC" ]] \
 				&& [[ "${tag_label[i]}" = *" / "* ]]; then
-					releasetype=( $(echo "${tag_label[i]// \/ /|}" \
+					tag_trick=( $(echo "${tag_label[i]// \/ /|}" \
 									| tr "|" "\n" ) )
-					for type in "${releasetype[@]}"; do
+					for type in "${tag_trick[@]}"; do
 						source_tag+=( "ISRC=\"${type}\"" )
+					done
+				elif [[ "${tag}" = "MUSICBRAINZ_ALBUMARTISTID" ]] \
+				&& [[ "${tag_label[i]}" = *" / "* ]]; then
+					tag_trick=( $(echo "${tag_label[i]// \/ /|}" \
+									| tr "|" "\n" ) )
+					for type in "${tag_trick[@]}"; do
+						source_tag+=( "MUSICBRAINZ_ALBUMARTISTID=\"${type}\"" )
 					done
 				else
 					# Prevent double quote error
