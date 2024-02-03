@@ -2,7 +2,7 @@
 
 Various audio to OPUS while keeping the tags.
 
-Audio source supported: ALAC, APE, DSF, FLAC, WAV, WAVPACK
+Audio source supported: APE, DSF, FLAC, M4A, MP3, WAV, WAVPACK
 
 --------------------------------------------------------------------------------------------------
 ## Install & update
@@ -19,16 +19,19 @@ Options:
   --dsd_only              Encode only DSD source.
   --flac_only             Encode only FLAC source.
   --m4a_only              Encode only M4A source.
+  --mp3_only              Encode only MP3 source.
   --wav_only              Encode only WAV source.
   --wavpack_only          Encode only WAVPACK source.
   -v, --verbose           More verbose, for debug.
+
+Supported source files:
+  * AAC ALAC as .m4a
+  * DSD as .dsf
+  * FLAC as .flac
+  * MP3 as .mp3
+  * WAV as .wav
+  * WAVPACK as .wv
 ```
-* ALAC as .m4a
-* DSD as .dsf
-* FLAC as .flac .ogg
-* Monkey's Audio as .ape
-* WAVPACK as .wv
-* WAV as .wav
 
 Notes: 
 * OPUS encoding bitrate is `--bitrate 192 --vbr`.

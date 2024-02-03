@@ -33,21 +33,6 @@ for i in "${!lst_audio_src[@]}"; do
 	   && "${lst_audio_src[i]##*.}" != "ogg" ]]; then
 			unset "lst_audio_src[i]"
 	fi
-
-	if [[ "${M4A_only}" = "1" ]] \
-	&& [[ "${lst_audio_src[i]##*.}" != "m4a" ]]; then
-			unset "lst_audio_src[i]"
-	fi
-	# Keep only ALAC codec in m4a
-	if [[ "${lst_audio_src[i]##*.}" = "m4a" ]]; then
-		codec_test=$(ffprobe -v error -select_streams a:0 \
-			-show_entries stream=codec_name -of csv=s=x:p=0 \
-			"${lst_audio_src[i]%.*}.m4a" )
-		if [[ "$codec_test" != "alac" ]]; then
-			unset "lst_audio_src[i]"
-		fi
-	fi
-
 	# Keep only FLAC codec in ogg
 	if [[ "${lst_audio_src[i]##*.}" = "ogg" ]]; then
 		codec_test=$(ffprobe -v error -select_streams a:0 \
@@ -56,6 +41,16 @@ for i in "${!lst_audio_src[@]}"; do
 		if [[ "$codec_test" != "flac" ]]; then
 			unset "lst_audio_src[i]"
 		fi
+	fi
+
+	if [[ "${M4A_only}" = "1" ]] \
+	&& [[ "${lst_audio_src[i]##*.}" != "m4a" ]]; then
+			unset "lst_audio_src[i]"
+	fi
+
+	if [[ "${MP3_only}" = "1" ]] \
+	&& [[ "${lst_audio_src[i]##*.}" != "mp3" ]]; then
+			unset "lst_audio_src[i]"
 	fi
 
 	if [[ "${wav_only}" = "1" ]] \
@@ -161,15 +156,15 @@ decode_counter="0"
 for file in "${lst_audio_src_pass[@]}"; do
 	(
 
-	if [[ "${file##*.}" = "ape" ]] \
-	|| [[ "${file##*.}" = "m4a" ]] \
-	|| [[ "${file##*.}" = "wv" ]]; then
-		ffmpeg $ffmpeg_log_lvl -y -i "$file" "${cache_dir}/${file##*/}.wav"
-
-	elif [[ "${file##*.}" = "dsf" ]]; then
-		ffmpeg $ffmpeg_log_lvl -y -i "$file" \
-			-c:a pcm_s24le -ar 384000 "${cache_dir}/${file##*/}.wav"
-
+	if [[ "${file##*.}" != "flac" ]] \
+	&& [[ "${file##*.}" != "ogg" ]] \
+	&& [[ "${file##*.}" != "wav" ]]; then
+		if [[ "${file##*.}" = "dsf" ]]; then
+			ffmpeg $ffmpeg_log_lvl -y -i "$file" \
+				-c:a pcm_s24le -ar 384000 "${cache_dir}/${file##*/}.wav"
+		else
+			ffmpeg $ffmpeg_log_lvl -y -i "$file" "${cache_dir}/${file##*/}.wav"
+		fi
 	fi
 
 	) &
@@ -238,6 +233,8 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 		file="${file%.*}.flac"
 	elif [[ -s "${file%.*}.m4a" ]]; then
 		file="${file%.*}.m4a"
+	elif [[ -s "${file%.*}.mp3" ]]; then
+		file="${file%.*}.mp3"
 	elif [[ -s "${file%.*}.ogg" ]]; then
 		file="${file%.*}.ogg"
 	elif [[ -s "${file%.*}.wv" ]]; then
@@ -263,8 +260,9 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 		fi
 	fi
 
-	# Remove empty tag label=
-	mapfile -t source_tag < <( printf '%s\n' "${source_tag[@]}" | grep "=" )
+	# Remove empty tag label= & sort
+	mapfile -t source_tag < <( printf '%s\n' "${source_tag[@]}" \
+								| grep "=" )
 
 	# Substitution
 	for i in "${!source_tag[@]}"; do
@@ -318,21 +316,36 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 		source_tag[i]="${source_tag[i]//WEBSITE=/Weblink=}"
 		source_tag[i]="${source_tag[i]//Writer=/WRITER=}"
 		# ID3v2
-		source_tag[i]="${source_tag[i]//Acoustid Id=/ACOUSTID_ID=}"
-		source_tag[i]="${source_tag[i]//arranger=/ARRANGER=}"
-		source_tag[i]="${source_tag[i]//description=/COMMENT=}"
-		source_tag[i]="${source_tag[i]//MusicBrainz Album Id=/MUSICBRAINZ_ALBUMID=}"
-		source_tag[i]="${source_tag[i]//MusicBrainz Album Artist Id=/MUSICBRAINZ_ALBUMARTISTID=}"
-		source_tag[i]="${source_tag[i]//MusicBrainz Album Status=/MUSICBRAINZ_ALBUMSTATUS=}"
-		source_tag[i]="${source_tag[i]//MusicBrainz Album Type=/MUSICBRAINZ_ALBUMTYPE=}"
-		source_tag[i]="${source_tag[i]//MusicBrainz Artist Id=/MUSICBRAINZ_ARTISTID=}"
-		source_tag[i]="${source_tag[i]//MusicBrainz Artist Id=/MUSICBRAINZ_ARTISTID=}"
-		source_tag[i]="${source_tag[i]//MusicBrainz Album Release Country=/RELEASECOUNTRY=}"
-		source_tag[i]="${source_tag[i]//MusicBrainz Release Group Id=/MUSICBRAINZ_RELEASEGROUPID=}"
-		source_tag[i]="${source_tag[i]//MusicBrainz Release Track Id=/MUSICBRAINZ_RELEASETRACKID=}"
+		source_tag[i]="${source_tag[i]//TALB=/ALBUM=}"
 		source_tag[i]="${source_tag[i]//TBPM=/BPM=}"
+		source_tag[i]="${source_tag[i]//TDOR=/ORIGINALDATE=}"
+		source_tag[i]="${source_tag[i]//TDRC=/DATE=}"
 		source_tag[i]="${source_tag[i]//TEXT=/LYRICIST=}"
+		source_tag[i]="${source_tag[i]//TIT2=/TITLE=}"
+		source_tag[i]="${source_tag[i]//TMED=/MEDIA=}"
+		source_tag[i]="${source_tag[i]//TPOS=/DISCNUMBER=}"
+		source_tag[i]="${source_tag[i]//TPE1=/ARTIST=}"
+		source_tag[i]="${source_tag[i]//TPE2=/ALBUMARTIST=}"
+		source_tag[i]="${source_tag[i]//TPUB=/LABEL=}"
+		source_tag[i]="${source_tag[i]//TRCK=/TRACKNUMBER=}"
+		source_tag[i]="${source_tag[i]//TSO2=/ALBUMARTISTSORT=}"
+		source_tag[i]="${source_tag[i]//TSOP=/ARTISTSORT=}"
 		source_tag[i]="${source_tag[i]//TSRC=/ISRC=}"
+		source_tag[i]="${source_tag[i]//TXXX=Acoustid Id=/ACOUSTID_ID=}"
+		source_tag[i]="${source_tag[i]//TXXX=Acoustid Fingerprint=/ACOUSTID_FINGERPRINT=}"
+		source_tag[i]="${source_tag[i]//TXXX=ARTISTS=/ARTISTS=}"
+		source_tag[i]="${source_tag[i]//TXXX=ASIN=/ASIN=}"
+		source_tag[i]="${source_tag[i]//TXXX=BARCODE=/BARCODE=}"
+		source_tag[i]="${source_tag[i]//TXXX=CATALOGNUMBER=/CATALOGNUMBER=}"
+		source_tag[i]="${source_tag[i]//TXXX=MusicBrainz Album Id=/MUSICBRAINZ_ALBUMID=}"
+		source_tag[i]="${source_tag[i]//TXXX=MusicBrainz Album Artist Id=/MUSICBRAINZ_ALBUMARTISTID=}"
+		source_tag[i]="${source_tag[i]//TXXX=MusicBrainz Album Status=/RELEASESTATUS=}"
+		source_tag[i]="${source_tag[i]//TXXX=MusicBrainz Album Type=/RELEASETYPE=}"
+		source_tag[i]="${source_tag[i]//TXXX=MusicBrainz Artist Id=/MUSICBRAINZ_ARTISTID=}"
+		source_tag[i]="${source_tag[i]//TXXX=MusicBrainz Album Release Country=/RELEASECOUNTRY=}"
+		source_tag[i]="${source_tag[i]//TXXX=MusicBrainz Release Group Id=/MUSICBRAINZ_RELEASEGROUPID=}"
+		source_tag[i]="${source_tag[i]//TXXX=MusicBrainz Release Track Id=/MUSICBRAINZ_RELEASETRACKID=}"
+		source_tag[i]="${source_tag[i]//TXXX=SCRIPT=/SCRIPT=}"
 		source_tag[i]="${source_tag[i]//UFID=/MUSICBRAINZ_TRACKID=}"
 		# iTune
 		source_tag[i]="${source_tag[i]//MusicBrainz Album Artist Id=/MUSICBRAINZ_ALBUMARTISTID=}"
@@ -340,6 +353,7 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 		shopt -s nocasematch
 		source_tag[i]="${source_tag[i]//date=/DATE=}"
 		source_tag[i]="${source_tag[i]//originaldate=/ORIGINALDATE=}"
+		source_tag[i]="${source_tag[i]//TXXX=originalyear=/ORIGINALYEAR=}"
 		shopt -u nocasematch
 	done
 
@@ -369,26 +383,52 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 					tag_label[i]="${tag_label[i]%/*}"
 				fi
 
-				if [[ "${tag}" = "RELEASETYPE" ]] \
-				&& [[ "${tag_label[i]}" = *" / "* ]]; then
-					tag_trick=( $(echo "${tag_label[i]// \/ /|}" \
-									| tr "|" "\n" ) )
+				if [[ "${tag}" = "ARTISTS" ]] \
+				&& [[ "${tag_label[i]}" = *"/"* ]]; then
+					mapfile -t tag_trick < <( echo "${tag_label[i]//\//|}" \
+									| tr "|" "\n" )
 					for type in "${tag_trick[@]}"; do
-						source_tag+=( "RELEASETYPE=\"${type}\"" )
+						source_tag+=( "ARTISTS=\"${type}\"" )
+					done
+				elif [[ "${tag}" = "MUSICBRAINZ_ARTISTID" ]] \
+				&& [[ "${tag_label[i]}" = *"/"* ]]; then
+					mapfile -t tag_trick < <( echo "${tag_label[i]//\//|}" \
+									| tr "|" "\n" )
+					for type in "${tag_trick[@]}"; do
+						source_tag+=( "MUSICBRAINZ_ARTISTID=\"${type}\"" )
 					done
 				elif [[ "${tag}" = "ISRC" ]] \
-				&& [[ "${tag_label[i]}" = *" / "* ]]; then
-					tag_trick=( $(echo "${tag_label[i]// \/ /|}" \
-									| tr "|" "\n" ) )
+				&& [[ "${tag_label[i]}" = *"/"* ]]; then
+					mapfile -t tag_trick < <( echo "${tag_label[i]//\//|}" \
+									| tr "|" "\n" )
 					for type in "${tag_trick[@]}"; do
 						source_tag+=( "ISRC=\"${type}\"" )
 					done
+				elif [[ "${tag}" = "LABEL" ]] \
+				&& [[ "${tag_label[i]}" = *"/"* ]]; then
+					mapfile -t tag_trick < <( echo "${tag_label[i]//\//|}" \
+									| tr "|" "\n" )
+					for type in "${tag_trick[@]}"; do
+						source_tag+=( "LABEL=\"${type}\"" )
+					done
+				elif [[ "${tag}" = "MUSICBRAINZ_TRACKID" ]] \
+				&& [[ "${tag_label[i]}" = *"'"* ]]; then
+					tag_trick=$(echo "${tag_label[i]}" \
+								| cut  -d "'" -f2)
+					source_tag+=( "MUSICBRAINZ_TRACKID=\"${tag_trick}\"" )
 				elif [[ "${tag}" = "MUSICBRAINZ_ALBUMARTISTID" ]] \
-				&& [[ "${tag_label[i]}" = *" / "* ]]; then
-					tag_trick=( $(echo "${tag_label[i]// \/ /|}" \
-									| tr "|" "\n" ) )
+				&& [[ "${tag_label[i]}" = *"/"* ]]; then
+					mapfile -t tag_trick < <( echo "${tag_label[i]//\//|}" \
+									| tr "|" "\n" )
 					for type in "${tag_trick[@]}"; do
 						source_tag+=( "MUSICBRAINZ_ALBUMARTISTID=\"${type}\"" )
+					done
+				elif [[ "${tag}" = "RELEASETYPE" ]] \
+				&& [[ "${tag_label[i]}" = *"/"* ]]; then
+					mapfile -t tag_trick < <( echo "${tag_label[i]//\//|}" \
+									| tr "|" "\n" )
+					for type in "${tag_trick[@]}"; do
+						source_tag+=( "RELEASETYPE=\"${type}\"" )
 					done
 				else
 					# Prevent double quote error
@@ -406,7 +446,7 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 	done
 
 	# Remove duplicate tags
-	mapfile -t source_tag < <( printf '%s\n' "${source_tag[@]}" | sort -u )
+	mapfile -t source_tag < <( printf '%s\n' "${source_tag[@]}" | uniq -u )
 
 	# tag argument
 	target_tags_construct=$(printf '%s\n' "${source_tag[@]}" \
@@ -771,17 +811,18 @@ Options:
   --dsd_only              Encode only DSD source.
   --flac_only             Encode only FLAC source.
   --m4a_only              Encode only M4A source.
+  --mp3_only              Encode only MP3 source.
   --wav_only              Encode only WAV source.
   --wavpack_only          Encode only WAVPACK source.
   -v, --verbose           More verbose, for debug.
 
 Supported source files:
+  * AAC ALAC as .m4a
   * DSD as .dsf
-  * FLAC as .flac .ogg
-  * M4A as .m4a
-  * Monkey's Audio as .ape
-  * WAVPACK as .wv
+  * FLAC as .flac
+  * MP3 as .mp3
   * WAV as .wav
+  * WAVPACK as .wv
 EOF
 }
 
@@ -793,7 +834,7 @@ cache_dir="/tmp/2opus"
 # Nb process parrallel (nb of processor)
 nproc=$(grep -cE 'processor' /proc/cpuinfo)
 # Input extention available
-input_ext="ape|dsf|flac|m4a|ogg|wv|wav"
+input_ext="ape|dsf|flac|m4a|mp3|ogg|wv|wav"
 # FFMPEG
 ffmpeg_log_lvl="-hide_banner -loglevel panic -nostats"
 # OPUS
@@ -896,9 +937,6 @@ while [[ $# -gt 0 ]]; do
 		usage
 		exit
 	;;
-	"--M4A_only")
-		M4A_only="1"
-	;;
 	"--ape_only")
 		ape_only="1"
 	;;
@@ -907,6 +945,12 @@ while [[ $# -gt 0 ]]; do
 	;;
 	"--flac_only")
 		flac_only="1"
+	;;
+	"--M4A_only")
+		M4A_only="1"
+	;;
+	"--MP3_only")
+		MP3_only="1"
 	;;
 	"--wav_only")
 		wav_only="1"
