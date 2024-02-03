@@ -10,6 +10,8 @@
 
 # Search & populate array with source files
 search_source_files() {
+local codec_test
+
 mapfile -t lst_audio_src < <(find "$PWD" -maxdepth 3 -type f -regextype posix-egrep \
 								-iregex '.*\.('$input_ext')$' 2>/dev/null | sort)
 
@@ -34,6 +36,15 @@ for i in "${!lst_audio_src[@]}"; do
 	if [[ "${M4A_only}" = "1" ]] \
 	&& [[ "${lst_audio_src[i]##*.}" != "m4a" ]]; then
 			unset "lst_audio_src[i]"
+	fi
+	# Keep only ALAC codec in m4a
+	if [[ "${lst_audio_src[i]##*.}" = "m4a" ]]; then
+		codec_test=$(ffprobe -v error -select_streams a:0 \
+			-show_entries stream=codec_name -of csv=s=x:p=0 \
+			"${lst_audio_src[i]%.*}.m4a" )
+		if [[ "$codec_test" != "alac" ]]; then
+			unset "lst_audio_src[i]"
+		fi
 	fi
 
 	if [[ "${wav_only}" = "1" ]] \

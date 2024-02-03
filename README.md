@@ -2,7 +2,7 @@
 
 Various audio to OPUS while keeping the tags.
 
-Audio source supported: APE, DSF, FLAC, M4A, WAV, WAVPACK
+Audio source supported: ALAC, APE, DSF, FLAC, WAV, WAVPACK
 
 --------------------------------------------------------------------------------------------------
 ## Install & update
@@ -23,9 +23,9 @@ Options:
   --wavpack_only          Encode only WAVPACK source.
   -v, --verbose           More verbose, for debug.
 ```
+* ALAC as .m4a
 * DSD as .dsf
 * FLAC as .flac
-* M4A as .m4a
 * Monkey's Audio as .ape
 * WAVPACK as .wv
 * WAV as .wav
