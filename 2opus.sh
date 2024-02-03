@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2001,SC2086
+# shellcheck disable=SC2001,SC2086,SC2207
 # 2opus
 # Various lossless to OPUS while keeping the tags.
 # \(^o^)/ 
@@ -487,8 +487,8 @@ for i in "${!lst_audio_src_pass[@]}"; do
 
 	# Remove temp wav files
 	if [[ "${lst_audio_src[i]##*.}" != "wav" ]] \
-	|| [[ "${lst_audio_src[i]##*.}" != "ogg" ]] \
-	|| [[ "${lst_audio_src[i]##*.}" != "flac" ]]; then
+	&& [[ "${lst_audio_src[i]##*.}" != "ogg" ]] \
+	&& [[ "${lst_audio_src[i]##*.}" != "flac" ]]; then
 		rm -f "${lst_audio_wav_decoded[i]%.*}.wav" 2>/dev/null
 	fi
 done
