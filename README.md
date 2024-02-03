@@ -9,7 +9,7 @@ Audio source supported: APE, DSF, FLAC, M4A, WAV, WAVPACK
 `curl https://raw.githubusercontent.com/Jocker666z/2opus/master/2opus.sh > /home/$USER/.local/bin/2opus && chmod +rx /home/$USER/.local/bin/2opus`
 
 ## Dependencies
-`ffmpeg flac mutagen-inspect opusenc opustags wavpack`
+`ffmpeg mutagen-inspect opusenc opustags`
 
 ## Use
 Processes all compatible files in the current directory and his three subdirectories.

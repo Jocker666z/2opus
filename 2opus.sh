@@ -68,29 +68,20 @@ for file in "${lst_audio_src[@]}"; do
 	fi
 
 	(
-	# FLAC - Verify integrity
-	if [[ "${file##*.}" = "flac" ]]; then
-		flac $flac_test_arg "$file" 2>"${cache_dir}/${file##*/}.decode_error.log"
-	# WAVPACK - Verify integrity
-	elif [[ "${file##*.}" = "wv" ]]; then
-		wvunpack $wavpack_test_arg "$file" 2>"${cache_dir}/${file##*/}.decode_error.log"
-	# APE, ALAC, DSD, WAV - Verify integrity
-	elif [[ "${file##*.}" = "m4a" ]] || [[ "${file##*.}" = "wav" ]] || \
-		 [[ "${file##*.}" = "ape" ]] || [[ "${file##*.}" = "dsf" ]]; then
-		ffmpeg -v error -i "$file" \
-			-vn -sn -dn -max_muxing_queue_size 9999 \
-			-f null - 2>"${cache_dir}/${file##*/}.decode_error.log"
 
-		# Ignore ffmpeg non-blocking errors
-		if [ -s "${cache_dir}/${file##*/}.decode_error.log" ]; then
-			# [mjpeg @ ...] unable to decode APP fields...
-			if < "${cache_dir}/${file##*/}.decode_error.log" \
-				grep  -E "mjpeg.*APP fields" &>/dev/null; then
-				rm "${cache_dir}/${file##*/}.decode_error.log"
-			fi
+	ffmpeg -v error -i "$file" \
+		-vn -sn -dn -max_muxing_queue_size 9999 \
+		-f null - 2>"${cache_dir}/${file##*/}.decode_error.log"
+
+	# Ignore ffmpeg non-blocking errors
+	if [ -s "${cache_dir}/${file##*/}.decode_error.log" ]; then
+		# [mjpeg @ ...] unable to decode APP fields...
+		if < "${cache_dir}/${file##*/}.decode_error.log" \
+			grep  -E "mjpeg.*APP fields" &>/dev/null; then
+			rm "${cache_dir}/${file##*/}.decode_error.log"
 		fi
-
 	fi
+
 	) &
 	if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
 		wait -n
@@ -102,17 +93,6 @@ wait
 # Test if error generated
 for file in "${lst_audio_src[@]}"; do
 
-	# FLAC - Special fix loop
-	if [[ "${file##*.}" = "flac" ]]; then
-		# Error log test & populate file in arrays
-		if [ -s "${cache_dir}/${file##*/}.decode_error.log" ]; then
-			# Try to fix file
-			flac $flac_fix_arg "$file"
-			# Re-test, if no valid 2 times exclude
-			flac $flac_test_arg "$file" 2>"${cache_dir}/${file##*/}.decode_error.log"
-		fi
-	fi
-
 	# Errors validation
 	if [ -s "${cache_dir}/${file##*/}.decode_error.log" ]; then
 		mv "${cache_dir}/${file##*/}.decode_error.log" "${file}.decode_error.log"
@@ -121,6 +101,7 @@ for file in "${lst_audio_src[@]}"; do
 		rm "${cache_dir}/${file##*/}.decode_error.log"  2>/dev/null
 		lst_audio_src_pass+=( "$file" )
 	fi
+
 done
 
 
@@ -158,15 +139,14 @@ decode_counter="0"
 for file in "${lst_audio_src_pass[@]}"; do
 	(
 
-	if [[ "${file##*.}" = "ape" ]] || [[ "${file##*.}" = "m4a" ]]; then
+	if [[ "${file##*.}" = "ape" ]] \
+	|| [[ "${file##*.}" = "m4a" ]] \
+	|| [[ "${file##*.}" = "wv" ]]; then
 		ffmpeg $ffmpeg_log_lvl -y -i "$file" "${cache_dir}/${file##*/}.wav"
 
 	elif [[ "${file##*.}" = "dsf" ]]; then
 		ffmpeg $ffmpeg_log_lvl -y -i "$file" \
 			-c:a pcm_s24le -ar 384000 "${cache_dir}/${file##*/}.wav"
-
-	elif [[ "${file##*.}" = "wv" ]]; then
-		wvunpack $wavpack_decode_arg "$file" -o "${cache_dir}/${file##*/}.wav"
 
 	fi
 
@@ -779,7 +759,7 @@ EOF
 }
 
 # Need Dependencies
-core_dependencies=(ffmpeg ffprobe flac mutagen-inspect opusenc opustags wavpack)
+core_dependencies=(ffmpeg ffprobe mutagen-inspect opusenc opustags)
 # Paths
 export PATH=$PATH:/home/$USER/.local/bin
 cache_dir="/tmp/2opus"
@@ -789,16 +769,9 @@ nproc=$(grep -cE 'processor' /proc/cpuinfo)
 input_ext="ape|dsf|flac|m4a|wv|wav"
 # FFMPEG
 ffmpeg_log_lvl="-hide_banner -loglevel panic -nostats"
-# FLAC
-flac_test_arg="--no-md5-sum --no-warnings-as-errors -s -t"
-flac_fix_arg="--totally-silent -f --verify --decode-through-errors"
-flac_decode_arg="--totally-silent -f -d"
 # OPUS
 opus_bitrate="192"
 opus_version=$(opusenc -V | head -1 | awk -F"[()]" '{print $2}' | cut -d' ' -f2-)
-# WAVPACK
-wavpack_test_arg="-q -v"
-wavpack_decode_arg="-q -w -y"
 # Tag whitelist according with:
 # https://picard-docs.musicbrainz.org/en/appendices/tag_mapping.html
 # Ommit: ENCODEDBY, ENCODERSETTINGS
