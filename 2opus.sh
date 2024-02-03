@@ -47,6 +47,16 @@ for i in "${!lst_audio_src[@]}"; do
 		fi
 	fi
 
+	# Keep only FLAC codec in ogg
+	if [[ "${lst_audio_src[i]##*.}" = "ogg" ]]; then
+		codec_test=$(ffprobe -v error -select_streams a:0 \
+			-show_entries stream=codec_name -of csv=s=x:p=0 \
+			"${lst_audio_src[i]%.*}.ogg" )
+		if [[ "$codec_test" != "flac" ]]; then
+			unset "lst_audio_src[i]"
+		fi
+	fi
+
 	if [[ "${wav_only}" = "1" ]] \
 	&& [[ "${lst_audio_src[i]##*.}" != "wav" ]]; then
 			unset "lst_audio_src[i]"
@@ -168,6 +178,7 @@ for file in "${lst_audio_src_pass[@]}"; do
 
 	# OPUS target array
 	if [[ "${file##*.}" = "flac" ]] \
+	|| [[ "${file##*.}" = "ogg" ]] \
 	|| [[ "${file##*.}" = "wav" ]]; then
 		lst_audio_wav_decoded+=( "$file" )
 	else
@@ -226,6 +237,8 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 		file="${file%.*}.flac"
 	elif [[ -s "${file%.*}.m4a" ]]; then
 		file="${file%.*}.m4a"
+	elif [[ -s "${file%.*}.ogg" ]]; then
+		file="${file%.*}.ogg"
 	elif [[ -s "${file%.*}.wv" ]]; then
 		file="${file%.*}.wv"
 	fi
@@ -472,7 +485,9 @@ for i in "${!lst_audio_src_pass[@]}"; do
 	lst_audio_opus_encoded+=( "${lst_audio_src_pass[i]%.*}.opus" )
 
 	# Remove temp wav files
-	if [[ "${lst_audio_src[i]##*.}" != "wav" ]]; then
+	if [[ "${lst_audio_src[i]##*.}" != "wav" ]] \
+	|| [[ "${lst_audio_src[i]##*.}" != "ogg" ]] \
+	|| [[ "${lst_audio_src[i]##*.}" != "flac" ]]; then
 		rm -f "${lst_audio_wav_decoded[i]%.*}.wav" 2>/dev/null
 	fi
 done
@@ -761,7 +776,7 @@ Options:
 
 Supported source files:
   * DSD as .dsf
-  * FLAC as .flac
+  * FLAC as .flac .ogg
   * M4A as .m4a
   * Monkey's Audio as .ape
   * WAVPACK as .wv
@@ -777,7 +792,7 @@ cache_dir="/tmp/2opus"
 # Nb process parrallel (nb of processor)
 nproc=$(grep -cE 'processor' /proc/cpuinfo)
 # Input extention available
-input_ext="ape|dsf|flac|m4a|wv|wav"
+input_ext="ape|dsf|flac|m4a|ogg|wv|wav"
 # FFMPEG
 ffmpeg_log_lvl="-hide_banner -loglevel panic -nostats"
 # OPUS
