@@ -243,6 +243,20 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 
 	# Source file tags array
 	mapfile -t source_tag < <( mutagen-inspect "$file" )
+	# itune need clean
+	if [[ -s "${file%.*}.m4a" ]]; then
+		for i in "${!source_tag[@]}"; do
+			source_tag[i]="${source_tag[i]//MP4FreeForm(b\'/}"
+			source_tag[i]="${source_tag[i]//\', <AtomDataType.UTF8: 1>)/}"
+			if [[ "${source_tag[i]}" = "disk="* ]] \
+			|| [[ "${source_tag[i]}" = *"trkn="* ]]; then
+				source_tag[i]="${source_tag[i]//disk=(/disk=}"
+				source_tag[i]="${source_tag[i]//trkn=(/trkn=}"
+				source_tag[i]="${source_tag[i]//, //}"
+				source_tag[i]="${source_tag[i]//)/}"
+			fi
+		done
+	fi
 	# Try to extract cover, if no cover in directory
 	if [[ ! -e "${file%/*}"/cover.jpg ]] \
 	&& [[ ! -e "${file%/*}"/cover.png ]]; then
@@ -348,9 +362,38 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 		source_tag[i]="${source_tag[i]//TXXX=SCRIPT=/SCRIPT=}"
 		source_tag[i]="${source_tag[i]//UFID=/MUSICBRAINZ_TRACKID=}"
 		# iTune
-		source_tag[i]="${source_tag[i]//MusicBrainz Album Artist Id=/MUSICBRAINZ_ALBUMARTISTID=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:Acoustid Id=/ACOUSTID_ID=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:Acoustid Fingerprint=/ACOUSTID_FINGERPRINT=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:ARTISTS=/ARTISTS=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:ASIN=/ASIN=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:BARCODE=/BARCODE=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:CATALOGNUMBER=/CATALOGNUMBER=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:ISRC=/ISRC=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:LABEL=/LABEL=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:MEDIA=/MEDIA=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:MusicBrainz Album Artist Id=/MUSICBRAINZ_ALBUMARTISTID=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:MusicBrainz Album Id=/MUSICBRAINZ_ALBUMID=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:MusicBrainz Album Release Country=/RELEASECOUNTRY=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:MusicBrainz Album Status=/RELEASESTATUS=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:MusicBrainz Album Type=/RELEASETYPE=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:MusicBrainz Artist Id=/MUSICBRAINZ_ARTISTID=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:MusicBrainz Release Group Id=/MUSICBRAINZ_RELEASEGROUPID=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:MusicBrainz Release Track Id=/MUSICBRAINZ_RELEASETRACKID=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:MusicBrainz Track Id=/MUSICBRAINZ_TRACKID=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:SCRIPT=/SCRIPT=}"
+		source_tag[i]="${source_tag[i]//©alb=/ALBUM=}"
+		source_tag[i]="${source_tag[i]//©ART=/ARTIST=}"
+		source_tag[i]="${source_tag[i]//©day=/DATE=}"
+		source_tag[i]="${source_tag[i]//©nam=/TITLE=}"
+		source_tag[i]="${source_tag[i]//aART=/ALBUMARTIST=}"
+		source_tag[i]="${source_tag[i]//disk=/DISCNUMBER=}"
+		source_tag[i]="${source_tag[i]//soaa=/ALBUMARTISTSORT=}"
+		source_tag[i]="${source_tag[i]//soar=/ARTISTSORT=}"
+		source_tag[i]="${source_tag[i]//trkn=/TRACKNUMBER=}"
 		# Waste fix
 		shopt -s nocasematch
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:originaldate=/ORIGINALDATE=}"
+		source_tag[i]="${source_tag[i]//----:com.apple.iTunes:originalyear=/ORIGINALYEAR=}"
 		source_tag[i]="${source_tag[i]//date=/DATE=}"
 		source_tag[i]="${source_tag[i]//originaldate=/ORIGINALDATE=}"
 		source_tag[i]="${source_tag[i]//TXXX=originalyear=/ORIGINALYEAR=}"
