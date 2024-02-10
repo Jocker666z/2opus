@@ -508,28 +508,32 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 				if [[ "${tag}" = "ARTISTS" ]] \
 				&& [[ "${tag_label[i]}" = *"/"* ]]; then
 					mapfile -t tag_trick < <( echo "${tag_label[i]//\//|}" \
-									| tr "|" "\n" )
+									| tr "|" "\n" \
+									| awk '$1=$1' )
 					for type in "${tag_trick[@]}"; do
 						source_tag+=( "ARTISTS=\"${type}\"" )
 					done
 				elif [[ "${tag}" = "MUSICBRAINZ_ARTISTID" ]] \
 				&& [[ "${tag_label[i]}" = *"/"* ]]; then
 					mapfile -t tag_trick < <( echo "${tag_label[i]//\//|}" \
-									| tr "|" "\n" )
+									| tr "|" "\n" \
+									| awk '$1=$1' )
 					for type in "${tag_trick[@]}"; do
 						source_tag+=( "MUSICBRAINZ_ARTISTID=\"${type}\"" )
 					done
 				elif [[ "${tag}" = "ISRC" ]] \
 				&& [[ "${tag_label[i]}" = *"/"* ]]; then
 					mapfile -t tag_trick < <( echo "${tag_label[i]//\//|}" \
-									| tr "|" "\n" )
+									| tr "|" "\n" \
+									| awk '$1=$1' )
 					for type in "${tag_trick[@]}"; do
 						source_tag+=( "ISRC=\"${type}\"" )
 					done
 				elif [[ "${tag}" = "LABEL" ]] \
 				&& [[ "${tag_label[i]}" = *"/"* ]]; then
 					mapfile -t tag_trick < <( echo "${tag_label[i]//\//|}" \
-									| tr "|" "\n" )
+									| tr "|" "\n" \
+									| awk '$1=$1' )
 					for type in "${tag_trick[@]}"; do
 						source_tag+=( "LABEL=\"${type}\"" )
 					done
@@ -541,16 +545,26 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 				elif [[ "${tag}" = "MUSICBRAINZ_ALBUMARTISTID" ]] \
 				&& [[ "${tag_label[i]}" = *"/"* ]]; then
 					mapfile -t tag_trick < <( echo "${tag_label[i]//\//|}" \
-									| tr "|" "\n" )
+									| tr "|" "\n" \
+									| awk '$1=$1' )
 					for type in "${tag_trick[@]}"; do
 						source_tag+=( "MUSICBRAINZ_ALBUMARTISTID=\"${type}\"" )
 					done
 				elif [[ "${tag}" = "RELEASETYPE" ]] \
 				&& [[ "${tag_label[i]}" = *"/"* ]]; then
 					mapfile -t tag_trick < <( echo "${tag_label[i]//\//|}" \
-									| tr "|" "\n" )
+									| tr "|" "\n" \
+									| awk '$1=$1' )
 					for type in "${tag_trick[@]}"; do
 						source_tag+=( "RELEASETYPE=\"${type}\"" )
+					done
+				elif [[ "${tag}" = "PERFORMER" ]] \
+				&& [[ "${tag_label[i]}" = *"/"* ]]; then
+					mapfile -t tag_trick < <( echo "${tag_label[i]//\//|}" \
+									| tr "|" "\n" \
+									| awk '$1=$1' )
+					for type in "${tag_trick[@]}"; do
+						source_tag+=( "PERFORMER=\"${type}\"" )
 					done
 				else
 					# Prevent double quote error
