@@ -210,6 +210,8 @@ local cover_test
 local cover_ext
 local tag_label
 local grab_tag_counter
+local tag_trick
+local tag_trick_str
 
 grab_tag_counter="0"
 
@@ -223,6 +225,7 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 	unset tag_name
 	unset tag_label
 	unset tag_trick
+	unset tag_trick_str
 
 	# Target file
 	if [[ -s "${file%.*}.ape" ]]; then
@@ -456,9 +459,9 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 					done
 				elif [[ "${tag}" = "MUSICBRAINZ_TRACKID" ]] \
 				&& [[ "${tag_label[i]}" = *"'"* ]]; then
-					tag_trick=$(echo "${tag_label[i]}" \
+					tag_trick_str=$(echo "${tag_label[i]}" \
 								| cut  -d "'" -f2)
-					source_tag+=( "MUSICBRAINZ_TRACKID=\"${tag_trick}\"" )
+					source_tag+=( "MUSICBRAINZ_TRACKID=\"${tag_trick_str}\"" )
 				elif [[ "${tag}" = "MUSICBRAINZ_ALBUMARTISTID" ]] \
 				&& [[ "${tag_label[i]}" = *"/"* ]]; then
 					mapfile -t tag_trick < <( echo "${tag_label[i]//\//|}" \
