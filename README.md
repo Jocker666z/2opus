@@ -15,6 +15,7 @@ Audio source supported: APE, DSF, FLAC, M4A, MP3, WAV, WAVPACK
 Processes all compatible files in the current directory and his three subdirectories.
 ```
 Options:
+  --replay-gain           Apply ReplayGain to each track.
   --ape_only              Encode only Monkey's Audio source.
   --dsd_only              Encode only DSD source.
   --flac_only             Encode only FLAC source.
@@ -36,3 +37,4 @@ Supported source files:
 Notes: 
 * OPUS encoding bitrate is `--bitrate 192 --vbr`.
 * Converted tags are according with musicbrainz (as far as possible) (https://picard-docs.musicbrainz.org/en/appendices/tag_mapping.html).
+* ReplayGain need `rsgain` (https://github.com/complexlogic/rsgain).

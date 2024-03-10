@@ -713,6 +713,38 @@ if ! [[ "$verbose" = "1" ]]; then
 	fi
 fi
 }
+# Replay gain
+replay_gain() {
+local rsgain_counter
+
+rsgain_counter="0"
+
+if [[ "$replay_gain" = "1" ]]; then
+
+	for file in "${lst_audio_opus_encoded[@]}"; do
+		(
+		rsgain custom -q -c a -s i "$file"
+		) &
+		if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
+			wait -n
+		fi
+
+		# Progress
+		rsgain_counter=$((rsgain_counter+1))
+		if ! [[ "$verbose" = "1" ]]; then
+			echo -ne "${rsgain_counter}/${#lst_audio_opus_encoded[@]} replay gain applied"\\r
+		fi
+	done
+	wait
+
+	# Progress end
+	if ! [[ "$verbose" = "1" ]]; then
+		tput hpa 0; tput el
+		echo "${rsgain_counter} replay gain applied"
+	fi
+
+fi
+}
 # Total size calculation in MB - Input must be in bytes
 calc_files_size() {
 local files
@@ -953,6 +985,7 @@ Usage:
 2opus [options]
 
 Options:
+  --replay-gain           Apply ReplayGain to each track.
   --ape_only              Encode only Monkey's Audio source.
   --dsd_only              Encode only DSD source.
   --flac_only             Encode only FLAC source.
@@ -1083,6 +1116,14 @@ while [[ $# -gt 0 ]]; do
 		usage
 		exit
 	;;
+	"--replay-gain")
+		if ! command -v rsgain &>/dev/null; then
+			echo " ReplayGain need rsgain <https://github.com/complexlogic/rsgain>"
+			exit
+		else
+			replay_gain="1"
+		fi
+	;;
 	"--ape_only")
 		ape_only="1"
 	;;
@@ -1144,6 +1185,9 @@ if (( "${#lst_audio_src[@]}" )); then
 	# Tag
 	tags_2_opus
 	tag_opus
+
+	# Replay gain
+	replay_gain
 
 	# End
 	summary_of_processing
