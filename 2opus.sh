@@ -12,8 +12,13 @@
 search_source_files() {
 local codec_test
 
-mapfile -t lst_audio_src < <(find "$PWD" -maxdepth 3 -type f -regextype posix-egrep \
-								-iregex '.*\.('$input_ext')$' 2>/dev/null | sort)
+if [[ "${re_opus}" = "1" ]]; then
+	mapfile -t lst_audio_src < <(find "$PWD" -maxdepth 3 -type f -regextype posix-egrep \
+									-iregex '.*\.('opus')$' 2>/dev/null | sort)
+else
+	mapfile -t lst_audio_src < <(find "$PWD" -maxdepth 3 -type f -regextype posix-egrep \
+									-iregex '.*\.('$input_ext')$' 2>/dev/null | sort)
+fi
 
 # Only clean
 for i in "${!lst_audio_src[@]}"; do
@@ -117,6 +122,9 @@ for file in "${lst_audio_src[@]}"; do
 	else
 		rm "${cache_dir}/${file##*/}.decode_error.log"  2>/dev/null
 		lst_audio_src_pass+=( "$file" )
+		if [[ "${re_opus}" = "1" ]]; then
+			lst_audio_reopus_src_pass+=( "${file}.old" )
+		fi
 	fi
 
 done
@@ -139,13 +147,6 @@ if ! [[ "$verbose" = "1" ]]; then
 		fi
 	fi
 fi
-
-# All source files size record
-total_source_files_size=$(calc_files_size "${lst_audio_src_pass[@]}")
-# Individual source file size record
-for file in "${lst_audio_src_pass[@]}"; do
-	file_source_files_size+=( "$(get_files_size_bytes "${file}")" )
-done
 }
 # Decode source
 decode_source() {
@@ -203,6 +204,16 @@ if [[ "$verbose" != "1" ]];then
 		echo "${decode_counter} source files decoded"
 	fi
 fi
+
+# All source files size record
+total_source_files_size=$(calc_files_size "${lst_audio_src_pass[@]}")
+# Individual source file size record
+for file in "${lst_audio_src_pass[@]}"; do
+	file_source_files_size+=( "$(get_files_size_bytes "${file}")" )
+	if [[ "${re_opus}" = "1" ]]; then
+		mv "${file}" "${file}.old"
+	fi
+done
 }
 # Convert tag to VORBIS
 apev2_sub () {
@@ -428,6 +439,9 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 		file="${file%.*}.ogg"
 	elif [[ -s "${file%.*}.wv" ]]; then
 		file="${file%.*}.wv"
+	elif [[ "${re_opus}" = "1" ]] \
+	  && [[ -s "${file}.old" ]]; then
+		file="${file}.old"
 	fi
 
 	# Source file tags array
@@ -623,11 +637,13 @@ for i in "${!lst_audio_src_pass[@]}"; do
 	if [[ "$verbose" = "1" ]]; then
 		opusenc \
 		--bitrate "$opus_bitrate" --vbr \
-			"${lst_audio_wav_decoded[i]}" "${lst_audio_src_pass[i]%.*}".opus &>/dev/null
+			"${lst_audio_wav_decoded[i]}" \
+			"${lst_audio_src_pass[i]%.*}".opus
 	else
 		opusenc \
 		--bitrate "$opus_bitrate" --vbr \
-			"${lst_audio_wav_decoded[i]}" "${lst_audio_src_pass[i]%.*}".opus &>/dev/null
+			"${lst_audio_wav_decoded[i]}" \
+			"${lst_audio_src_pass[i]%.*}".opus &>/dev/null
 	fi
 	) &
 	if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
@@ -658,7 +674,7 @@ fi
 
 # Clean + target array
 for i in "${!lst_audio_src_pass[@]}"; do
-	# Array of ape target
+	# Array of OPUS target
 	lst_audio_opus_encoded+=( "${lst_audio_src_pass[i]%.*}.opus" )
 
 	# Remove temp wav files
@@ -835,7 +851,9 @@ term_widh_truncate=$(stty size | awk '{print $2}' | awk '{ print $1 - 8 }')
 
 for line in "${list[@]}"; do
 	if [[ "${#line}" -gt "$term_widh_truncate" ]]; then
-		echo -e " $line" | cut -c 1-"$term_widh_truncate" | awk '{print $0"..."}'
+		echo -e " $line" \
+			| cut -c 1-"$term_widh_truncate" \
+			| awk '{print $0"..."}'
 	else
 		echo -e " $line"
 	fi
@@ -868,7 +886,7 @@ if (( "${#lst_audio_src[@]}" )); then
 				file_replaygain="${file_replaygain//REPLAYGAIN_TRACK_GAIN=/}"
 				file_replaygain="${file_replaygain//[[:blank:]]/} ~ "
 				if [[ "${file_replaygain:0:1}" =~ ^[0-9]+$ ]]; then
-						file_replaygain="+${file_replaygain}"
+					file_replaygain="+${file_replaygain}"
 				fi
 			fi
 			filesPassLabel+=( "${filesPassSizeReduction[i]}% ~ ${file_replaygain}.${file_path_truncate}" )
@@ -914,9 +932,15 @@ if [ "${#lst_audio_opus_encoded[@]}" -gt 0 ] ; then
 	case $qarm in
 		"Y"|"y")
 			# Remove source files
-			for file in "${lst_audio_src_pass[@]}"; do
-				rm -f "$file" 2>/dev/null
-			done
+			if [[ "${re_opus}" = "1" ]]; then
+				for file in "${lst_audio_reopus_src_pass[@]}"; do
+					rm -f "$file" 2>/dev/null
+				done
+			else
+				for file in "${lst_audio_src_pass[@]}"; do
+					rm -f "$file" 2>/dev/null
+				done
+			fi
 		;;
 		*)
 			source_not_removed="1"
@@ -933,6 +957,9 @@ if [ "$source_not_removed" = "1" ] ; then
 			# Remove source files
 			for file in "${lst_audio_opus_encoded[@]}"; do
 				rm -f "$file" 2>/dev/null
+				if [[ "${re_opus}" = "1" ]]; then
+					mv "${file}.old" "$file"
+				fi
 			done
 		;;
 	esac
@@ -995,6 +1022,7 @@ Usage:
 
 Options:
   --replay-gain           Apply ReplayGain to each track.
+  --re_opus               Re-encode OPUS.
   --ape_only              Encode only Monkey's Audio source.
   --dsd_only              Encode only DSD source.
   --flac_only             Encode only FLAC source.
@@ -1007,7 +1035,7 @@ Options:
 Supported source files:
   * AAC ALAC as .m4a
   * DSD as .dsf
-  * FLAC as .flac
+  * FLAC as .flac .ogg
   * MP3 as .mp3
   * WAV as .wav
   * WAVPACK as .wv
@@ -1124,6 +1152,9 @@ while [[ $# -gt 0 ]]; do
 	-h|--help)
 		usage
 		exit
+	;;
+	"--re_opus")
+		re_opus="1"
 	;;
 	"--replay-gain")
 		if ! command -v rsgain &>/dev/null; then
