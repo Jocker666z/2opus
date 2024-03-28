@@ -77,50 +77,59 @@ local test_counter
 test_counter="0"
 
 # Test
-for file in "${lst_audio_src[@]}"; do
+if [[ -z "$no_test_source" ]]; then
+	for file in "${lst_audio_src[@]}"; do
 
-	# Progress
-	if ! [[ "$verbose" = "1" ]]; then
-		test_counter=$((test_counter+1))
-		if [[ "${#lst_audio_src[@]}" = "1" ]]; then
-			echo -ne "${test_counter}/${#lst_audio_src[@]} source file is being tested"\\r
-		else
-			echo -ne "${test_counter}/${#lst_audio_src[@]} source files are being tested"\\r
+		# Progress
+		if ! [[ "$verbose" = "1" ]]; then
+			test_counter=$((test_counter+1))
+			if [[ "${#lst_audio_src[@]}" = "1" ]]; then
+				echo -ne "${test_counter}/${#lst_audio_src[@]} source file is being tested"\\r
+			else
+				echo -ne "${test_counter}/${#lst_audio_src[@]} source files are being tested"\\r
+			fi
 		fi
-	fi
 
-	(
+		(
 
-	ffmpeg -v error -i "$file" \
-		-vn -sn -dn -max_muxing_queue_size 9999 \
-		-f null - 2>"${cache_dir}/${file##*/}.decode_error.log"
+		ffmpeg -v error -i "$file" \
+			-vn -sn -dn -max_muxing_queue_size 9999 \
+			-f null - 2>"${cache_dir}/${file##*/}.decode_error.log"
 
-	# Ignore ffmpeg non-blocking errors
-	if [ -s "${cache_dir}/${file##*/}.decode_error.log" ]; then
-		# [mjpeg @ ...] unable to decode APP fields...
-		if < "${cache_dir}/${file##*/}.decode_error.log" \
-			grep  -E "mjpeg.*APP fields" &>/dev/null; then
-			rm "${cache_dir}/${file##*/}.decode_error.log"
+		# Ignore ffmpeg non-blocking errors
+		if [ -s "${cache_dir}/${file##*/}.decode_error.log" ]; then
+			# [mjpeg @ ...] unable to decode APP fields...
+			if < "${cache_dir}/${file##*/}.decode_error.log" \
+				grep  -E "mjpeg.*APP fields" &>/dev/null; then
+				rm "${cache_dir}/${file##*/}.decode_error.log"
+			fi
 		fi
-	fi
 
-	) &
-	if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
-		wait -n
-	fi
+		) &
+		if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
+			wait -n
+		fi
 
-done
-wait
+	done
+	wait
+fi
 
 # Test if error generated
 for file in "${lst_audio_src[@]}"; do
 
-	# Errors validation
-	if [ -s "${cache_dir}/${file##*/}.decode_error.log" ]; then
-		mv "${cache_dir}/${file##*/}.decode_error.log" "${file}.decode_error.log"
-		lst_audio_src_rejected+=( "$file" )
+	if [[ -z "$no_test_source" ]]; then
+		# Errors validation
+		if [ -s "${cache_dir}/${file##*/}.decode_error.log" ]; then
+			mv "${cache_dir}/${file##*/}.decode_error.log" "${file}.decode_error.log"
+			lst_audio_src_rejected+=( "$file" )
+		else
+			rm "${cache_dir}/${file##*/}.decode_error.log"  2>/dev/null
+			lst_audio_src_pass+=( "$file" )
+			if [[ "${re_opus}" = "1" ]]; then
+				lst_audio_reopus_src_pass+=( "${file}.old" )
+			fi
+		fi
 	else
-		rm "${cache_dir}/${file##*/}.decode_error.log"  2>/dev/null
 		lst_audio_src_pass+=( "$file" )
 		if [[ "${re_opus}" = "1" ]]; then
 			lst_audio_reopus_src_pass+=( "${file}.old" )
@@ -131,7 +140,8 @@ done
 
 
 # Progress end
-if ! [[ "$verbose" = "1" ]]; then
+if [[ "$verbose" != "1" ]] \
+&& [[ -z "$no_test_source" ]]; then
 	tput hpa 0; tput el
 	if (( "${#lst_audio_src_rejected[@]}" )); then
 		if [[ "${#lst_audio_src[@]}" = "1" ]]; then
@@ -638,12 +648,12 @@ for i in "${!lst_audio_src_pass[@]}"; do
 		opusenc \
 		--bitrate "$opus_bitrate" --vbr \
 			"${lst_audio_wav_decoded[i]}" \
-			"${lst_audio_src_pass[i]%.*}".opus
+			"${lst_audio_src_pass[i]%.*}.opus"
 	else
 		opusenc \
 		--bitrate "$opus_bitrate" --vbr \
 			"${lst_audio_wav_decoded[i]}" \
-			"${lst_audio_src_pass[i]%.*}".opus &>/dev/null
+			"${lst_audio_src_pass[i]%.*}.opus" &>/dev/null
 	fi
 	) &
 	if [[ $(jobs -r -p | wc -l) -ge $nproc ]]; then
@@ -1021,6 +1031,7 @@ Usage:
 2opus [options]
 
 Options:
+  --no_test_source        Skip test of source files.
   --replay-gain           Apply ReplayGain to each track.
   --re_opus               Re-encode OPUS.
   --ape_only              Encode only Monkey's Audio source.
@@ -1043,7 +1054,7 @@ EOF
 }
 
 # Need Dependencies
-core_dependencies=(ffmpeg ffprobe mutagen-inspect opusenc opustags)
+core_dependencies=(bc ffmpeg ffprobe mutagen-inspect opusenc opustags)
 # Paths
 export PATH=$PATH:/home/$USER/.local/bin
 cache_dir="/tmp/2opus"
@@ -1152,6 +1163,9 @@ while [[ $# -gt 0 ]]; do
 	-h|--help)
 		usage
 		exit
+	;;
+	"--no_test_source")
+		no_test_source="1"
 	;;
 	"--re_opus")
 		re_opus="1"

@@ -15,6 +15,7 @@ Audio source supported: APE, DSF, FLAC, M4A, MP3, OPUS, WAV, WAVPACK
 Processes all compatible files in the current directory and his three subdirectories.
 ```
 Options:
+  --no_test_source        Skip test of source files.
   --replay-gain           Apply ReplayGain to each track.
   --re_opus               Re-encode OPUS.
   --ape_only              Encode only Monkey's Audio source.
