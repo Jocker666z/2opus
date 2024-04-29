@@ -454,6 +454,11 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 		file="${file}.old"
 	fi
 
+	# If ReplayGain or not
+	if [[ "$replay_gain" != "1" ]]; then
+		Vorbis_whitelist=("${Vorbis_whitelist[@]}" "${Vorbis_whitelist_replaygain[@]}")
+	fi
+
 	# Source file tags array
 	mapfile -t source_tag < <( mutagen-inspect "$file" )
 	# itune need clean
@@ -1134,13 +1139,6 @@ Vorbis_whitelist=(
 	'RELEASESTATUS'
 	'RELEASETYPE'
 	'REMIXER'
-	'REPLAYGAIN_ALBUM_GAIN'
-	'REPLAYGAIN_ALBUM_PEAK'
-	'REPLAYGAIN_ALBUM_RANGE'
-	'REPLAYGAIN_REFERENCE_LOUDNESS'
-	'REPLAYGAIN_TRACK_GAIN'
-	'REPLAYGAIN_TRACK_PEAK'
-	'REPLAYGAIN_TRACK_RANGE'
 	'SCRIPT'
 	'SHOWMOVEMENT'
 	'SUBTITLE'
@@ -1154,6 +1152,15 @@ Vorbis_whitelist=(
 	'WEBSITE'
 	'WORK'
 	'WRITER'
+)
+Vorbis_whitelist_replaygain=(
+	'REPLAYGAIN_ALBUM_GAIN'
+	'REPLAYGAIN_ALBUM_PEAK'
+	'REPLAYGAIN_ALBUM_RANGE'
+	'REPLAYGAIN_REFERENCE_LOUDNESS'
+	'REPLAYGAIN_TRACK_GAIN'
+	'REPLAYGAIN_TRACK_PEAK'
+	'REPLAYGAIN_TRACK_RANGE'
 )
 
 # Command arguments
