@@ -533,6 +533,10 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 				|| [[ "${tag}" = "DISCNUMBER" ]]; then
 					tag_label[i]="${tag_label[i]%/*}"
 				fi
+				if [[ "${tag}" = "LABEL" ]] \
+				&& [[ "${tag_label[i]}" = *"\xc"* ]]; then
+					tag_label[i]=$(printf "${tag_label[i]}")
+				fi
 
 				if [[ "${tag}" = "ARTISTS" ]] \
 				&& [[ "${tag_label[i]}" = *"/"* ]]; then
