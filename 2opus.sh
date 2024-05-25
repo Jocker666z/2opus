@@ -169,6 +169,16 @@ for file in "${lst_audio_src_pass[@]}"; do
 
 	if [[ "${file##*.}" != "flac" ]] \
 	&& [[ "${file##*.}" != "ogg" ]] \
+	&& [[ "${file##*.}" != "wav" ]] \
+	&& [[ "$verbose" = "1" ]]; then
+		if [[ "${file##*.}" = "dsf" ]]; then
+			ffmpeg -y -i "$file" \
+				-c:a pcm_s24le -ar 384000 "${cache_dir}/${file##*/}.wav"
+		else
+			ffmpeg -y -i "$file" "${cache_dir}/${file##*/}.wav"
+		fi
+	elif [[ "${file##*.}" != "flac" ]] \
+	&& [[ "${file##*.}" != "ogg" ]] \
 	&& [[ "${file##*.}" != "wav" ]]; then
 		if [[ "${file##*.}" = "dsf" ]]; then
 			ffmpeg $ffmpeg_log_lvl -y -i "$file" \
@@ -535,7 +545,7 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 				fi
 				if [[ "${tag}" = "LABEL" ]] \
 				&& [[ "${tag_label[i]}" = *"\xc"* ]]; then
-					tag_label[i]=$(printf "${tag_label[i]}")
+					tag_label[i]=$(printf "%b" "${tag_label[i]}")
 				fi
 
 				if [[ "${tag}" = "ARTISTS" ]] \
@@ -1050,6 +1060,7 @@ Options:
   --mp3_only              Encode only MP3 source.
   --wav_only              Encode only WAV source.
   --wavpack_only          Encode only WAVPACK source.
+  -t, --tmp               Use /tmp for temp files.
   -v, --verbose           More verbose, for debug.
 
 Supported source files:
@@ -1066,7 +1077,7 @@ EOF
 core_dependencies=(bc ffmpeg ffprobe mutagen-inspect opusenc opustags)
 # Paths
 export PATH=$PATH:/home/$USER/.local/bin
-cache_dir="/tmp/2opus"
+cache_dir="/home/$USER/.cache/2opus"
 # Nb process parrallel (nb of processor)
 nproc=$(grep -cE 'processor' /proc/cpuinfo)
 # Input extention available
@@ -1209,6 +1220,9 @@ while [[ $# -gt 0 ]]; do
 	;;
 	"--wavpack_only")
 		wavpack_only="1"
+	;;
+	-t|--tmp)
+		cache_dir="/tmp/2opus"
 	;;
 	-v|--verbose)
 		verbose="1"

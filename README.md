@@ -25,6 +25,7 @@ Options:
   --mp3_only              Encode only MP3 source.
   --wav_only              Encode only WAV source.
   --wavpack_only          Encode only WAVPACK source.
+  -t, --tmp               Use /tmp for temp files.
   -v, --verbose           More verbose, for debug.
 
 Supported source files:
@@ -41,3 +42,4 @@ Notes:
 * Converted tags are according with musicbrainz (as far as possible) (https://picard-docs.musicbrainz.org/en/appendices/tag_mapping.html).
 * ReplayGain need `rsgain` (https://github.com/complexlogic/rsgain).
 * `--re_opus` is a special case, when active this option ignore other types of file.
+* `--tmp` increase speed of decoding if you use tmpfs for /tmp directory, but keep in mind the size of this fs.
