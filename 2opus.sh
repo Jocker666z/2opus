@@ -100,7 +100,11 @@ if [[ -z "$no_test_source" ]]; then
 		if [ -s "${cache_dir}/${file##*/}.decode_error.log" ]; then
 			# [mjpeg @ ...] unable to decode APP fields...
 			if < "${cache_dir}/${file##*/}.decode_error.log" \
-				grep  -E "mjpeg.*APP fields" &>/dev/null; then
+				grep -E "mjpeg.*APP fields" &>/dev/null; then
+				rm "${cache_dir}/${file##*/}.decode_error.log"
+			# [... @ ...] Unknown attached ... image/webp.
+			elif < "${cache_dir}/${file##*/}.decode_error.log" \
+				grep -E "*image/webp" &>/dev/null; then
 				rm "${cache_dir}/${file##*/}.decode_error.log"
 			fi
 		fi
