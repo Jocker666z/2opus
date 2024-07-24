@@ -461,6 +461,8 @@ for file in "${lst_audio_opus_encoded[@]}"; do
 		file="${file%.*}.mp3"
 	elif [[ -s "${file%.*}.ogg" ]]; then
 		file="${file%.*}.ogg"
+	elif [[ -s "${file%.*}.wav" ]]; then
+		file="${file%.*}.wav"
 	elif [[ -s "${file%.*}.wv" ]]; then
 		file="${file%.*}.wv"
 	elif [[ "${re_opus}" = "1" ]] \
