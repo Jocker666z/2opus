@@ -1066,7 +1066,7 @@ Options:
   --mp3_only              Encode only MP3 source.
   --wav_only              Encode only WAV source.
   --wavpack_only          Encode only WAVPACK source.
-  -t, --tmp               Use /tmp for temp files.
+  -t, --tmp               Cache use /tmp instead /home/$USER/.cache.
   -v, --verbose           More verbose, for debug.
 
 Supported source files:
