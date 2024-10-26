@@ -13,8 +13,8 @@ search_source_files() {
 local codec_test
 
 if [[ "${re_opus}" = "1" ]]; then
-	mapfile -t lst_audio_src < <(find "$PWD" -maxdepth 3 -type f -regextype posix-egrep \
-									-iregex '.*\.('opus')$' 2>/dev/null | sort)
+	mapfile -t lst_audio_src < <(find "$PWD" -maxdepth 3 -type f -iname '*.opus' 2>/dev/null \
+									| sort)
 else
 	mapfile -t lst_audio_src < <(find "$PWD" -maxdepth 3 -type f -regextype posix-egrep \
 									-iregex '.*\.('$input_ext')$' 2>/dev/null | sort)
@@ -104,7 +104,7 @@ if [[ -z "$no_test_source" ]]; then
 				rm "${cache_dir}/${file##*/}.decode_error.log"
 			# [... @ ...] Unknown attached ... image/webp.
 			elif < "${cache_dir}/${file##*/}.decode_error.log" \
-				grep -E "*image/webp" &>/dev/null; then
+				grep -E "image/webp" &>/dev/null; then
 				rm "${cache_dir}/${file##*/}.decode_error.log"
 			fi
 		fi
